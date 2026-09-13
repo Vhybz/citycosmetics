@@ -9,12 +9,14 @@ class PaymentDetail {
   final double amount;
   final String? reference; // For mobile/card refs
   final bool isPaystack;
+  final DateTime? date;
 
   PaymentDetail({
     required this.method,
     required this.amount,
     this.reference,
     this.isPaystack = false,
+    this.date,
   });
 
   factory PaymentDetail.fromJson(dynamic json) {
@@ -24,6 +26,7 @@ class PaymentDetail {
       amount: (map['amount'] as num).toDouble(),
       reference: map['reference'],
       isPaystack: map['is_paystack'] ?? false,
+      date: map['date'] != null ? DateTime.parse(map['date']) : null,
     );
   }
 
@@ -32,6 +35,7 @@ class PaymentDetail {
     'amount': amount,
     'reference': reference,
     'is_paystack': isPaystack,
+    'date': date?.toIso8601String(),
   };
 }
 
@@ -40,12 +44,14 @@ class SaleItem {
   final double quantity;
   final double priceAtSale;
   final double originalPrice;
+  final String? selectedUnit;
 
   SaleItem({
     required this.product,
     required this.quantity,
     required this.priceAtSale,
     required this.originalPrice,
+    this.selectedUnit,
   });
 
   factory SaleItem.fromJson(dynamic json) {
@@ -55,6 +61,7 @@ class SaleItem {
       quantity: (map['quantity'] as num).toDouble(),
       priceAtSale: (map['price_at_sale'] as num).toDouble(),
       originalPrice: (map['original_price'] as num? ?? (map['price_at_sale'] as num)).toDouble(),
+      selectedUnit: map['selected_unit'] ?? map['unit'],
     );
   }
 
@@ -66,6 +73,7 @@ class SaleItem {
     'quantity': quantity,
     'price_at_sale': priceAtSale,
     'original_price': originalPrice,
+    'selected_unit': selectedUnit ?? product.unit,
   };
 }
 

@@ -240,12 +240,14 @@ class CartItem {
   final double quantity;
   final double priceAtSale;
   final double originalPrice;
+  final String? selectedUnit;
 
   CartItem({
     required this.product, 
     required this.quantity,
     required this.priceAtSale,
     required this.originalPrice,
+    this.selectedUnit,
   });
 
   double get total => priceAtSale * quantity;

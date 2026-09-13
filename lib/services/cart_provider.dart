@@ -4,14 +4,26 @@ import '../models/product.dart';
 class CartNotifier extends StateNotifier<List<CartItem>> {
   CartNotifier() : super([]);
 
-  void addItem(Product product, double quantity, bool isWholesale) {
+  void addItem(Product product, double quantity, bool isWholesale, {String? selectedUnit}) {
     final price = product.getPrice(isWholesale);
     final basePrice = isWholesale ? product.wholesalePrice : product.retailPrice;
-    state = [...state, CartItem(product: product, quantity: quantity, priceAtSale: price, originalPrice: basePrice)];
+    state = [...state, CartItem(
+      product: product, 
+      quantity: quantity, 
+      priceAtSale: price, 
+      originalPrice: basePrice,
+      selectedUnit: selectedUnit,
+    )];
   }
 
-  void addItemWithCustomPrice(Product product, double quantity, double customPrice, double originalPrice) {
-    state = [...state, CartItem(product: product, quantity: quantity, priceAtSale: customPrice, originalPrice: originalPrice)];
+  void addItemWithCustomPrice(Product product, double quantity, double customPrice, double originalPrice, {String? selectedUnit}) {
+    state = [...state, CartItem(
+      product: product, 
+      quantity: quantity, 
+      priceAtSale: customPrice, 
+      originalPrice: originalPrice,
+      selectedUnit: selectedUnit,
+    )];
   }
 
   void removeItem(int index) {

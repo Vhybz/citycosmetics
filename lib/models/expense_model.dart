@@ -65,4 +65,14 @@ class ExpenseRecord {
       receiptUrl: receiptUrl ?? this.receiptUrl,
     );
   }
+
+  bool get isOperationalExpense {
+    const nonExpenseCategories = {
+      'Daily Sales Closure',
+      'CEO Withdrawal',
+      'Till Opening Balance',
+      'Bank Deposit',
+    };
+    return !nonExpenseCategories.contains(category);
+  }
 }

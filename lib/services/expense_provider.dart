@@ -302,7 +302,7 @@ class ExpenseNotifier extends StateNotifier<ExpenseState> {
 
   double getTotalExpensesForMonth(int month, int year) {
     return state.records
-        .where((e) => e.date.month == month && e.date.year == year)
+        .where((e) => e.isOperationalExpense && e.date.month == month && e.date.year == year)
         .fold(0.0, (sum, e) => sum + e.amount);
   }
 }

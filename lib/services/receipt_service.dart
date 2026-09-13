@@ -6,6 +6,7 @@ import 'package:intl/intl.dart';
 import '../models/sale_model.dart';
 import '../models/user_model.dart';
 import '../models/salary_model.dart';
+import '../models/expense_model.dart';
 import '../core/utils.dart';
 
 class ReceiptService {
@@ -139,7 +140,7 @@ class ReceiptService {
                       mainAxisAlignment: pw.MainAxisAlignment.spaceBetween,
                       children: [
                         pw.Expanded(
-                          child: pw.Text('[${item.product.category.toUpperCase()}] ${item.product.name} (${WeightConverter.formatShort(item.quantity, unit: item.product.unit)})', 
+                          child: pw.Text('[${item.product.category.toUpperCase()}] ${item.product.name} (${WeightConverter.formatShort(item.quantity, unit: item.selectedUnit ?? item.product.unit)})', 
                             style: pw.TextStyle(font: font, fontSize: 8)),
                         ),
                         pw.Text(item.total.toStringAsFixed(2), style: pw.TextStyle(font: font, fontSize: 8)),
@@ -262,7 +263,7 @@ static String _generateQRData(SaleRecord sale) {
     }
     buffer.writeln('Items:');
     for (var item in sale.items) {
-      buffer.writeln('- [${item.product.category.toUpperCase()}] ${item.product.name} (${WeightConverter.formatShort(item.quantity, unit: item.product.unit)}): ₵${item.total.toStringAsFixed(2)}');
+      buffer.writeln('- [${item.product.category.toUpperCase()}] ${item.product.name} (${WeightConverter.formatShort(item.quantity, unit: item.selectedUnit ?? item.product.unit)}): ₵${item.total.toStringAsFixed(2)}');
     }
     buffer.writeln('Total: ₵${sale.totalAmount.toStringAsFixed(2)}');
     buffer.writeln('Paid: ₵${sale.amountPaid.toStringAsFixed(2)}');
@@ -1122,5 +1123,77 @@ static String _generateQRData(SaleRecord sale) {
         ],
       ),
     );
+  }
+
+  static Future<void> printExpenseReport(List<ExpenseRecord> expenses, {String title = 'Business Expenses Report'}) async {
+    try {
+      final doc = pw.Document();
+      final totalAmount = expenses.fold(0.0, (sum, e) => sum + e.amount);
+
+      pw.Font font;
+      pw.Font boldFont;
+
+      try {
+        font = await PdfGoogleFonts.notoSansRegular();
+        boldFont = await PdfGoogleFonts.notoSansBold();
+      } catch (e) {
+        font = pw.Font.helvetica();
+        boldFont = pw.Font.helveticaBold();
+      }
+
+      doc.addPage(
+        pw.MultiPage(
+          pageFormat: PdfPageFormat.a4,
+          build: (pw.Context context) {
+            return [
+              pw.Header(
+                level: 0,
+                child: pw.Row(
+                  mainAxisAlignment: pw.MainAxisAlignment.spaceBetween,
+                  children: [
+                    pw.Text('Mi~CORAZON FRESHMEAT BUTCHERY', style: pw.TextStyle(font: boldFont)),
+                    pw.Text(DateFormat('yyyy-MM-dd').format(DateTime.now()), style: pw.TextStyle(font: font)),
+                  ],
+                ),
+              ),
+              pw.Text(title, style: pw.TextStyle(fontSize: 18, font: boldFont)),
+              pw.SizedBox(height: 10),
+              pw.Text('Records Count: ${expenses.length} | Total Value: GHS ${totalAmount.toStringAsFixed(2)}', style: pw.TextStyle(font: font, fontSize: 10)),
+              pw.SizedBox(height: 15),
+              pw.TableHelper.fromTextArray(
+                headers: ['Title', 'Category', 'Date', 'Amount (GHS)', 'Receipt'],
+                data: expenses.map((e) => [
+                  e.title,
+                  e.category,
+                  DateFormat('yyyy-MM-dd').format(e.date),
+                  e.amount.toStringAsFixed(2),
+                  e.receiptUrl != null ? 'Yes' : 'No',
+                ]).toList(),
+                headerStyle: pw.TextStyle(font: boldFont, color: PdfColors.white),
+                cellStyle: pw.TextStyle(font: font, fontSize: 9),
+                headerDecoration: const pw.BoxDecoration(color: PdfColor.fromInt(0xFF6B1111)),
+                cellAlignment: pw.Alignment.centerLeft,
+              ),
+              pw.SizedBox(height: 15),
+              pw.Divider(),
+              pw.Row(
+                mainAxisAlignment: pw.MainAxisAlignment.end,
+                children: [
+                  pw.Text('TOTAL EXPENSES: ', style: pw.TextStyle(font: boldFont, fontSize: 14)),
+                  pw.Text('GHS ${totalAmount.toStringAsFixed(2)}', style: pw.TextStyle(font: boldFont, fontSize: 14, color: PdfColors.red)),
+                ],
+              ),
+            ];
+          },
+        ),
+      );
+
+      await Printing.layoutPdf(
+        onLayout: (PdfPageFormat format) async => doc.save(),
+        name: 'Expense_Report_${DateFormat('yyyyMMdd').format(DateTime.now())}',
+      );
+    } catch (e) {
+      debugPrint('Expense Report Printing Error: $e');
+    }
   }
 }

@@ -360,7 +360,7 @@ class ProductNotifier extends StateNotifier<AsyncValue<List<Product>>> {
     }
   }
 
-  Future<void> applyPromotion(double percentage, DateTime start, DateTime end, PromoTarget target, PromoCustomerTarget customerTarget, {List<String>? selectedIds}) async {
+  Future<void> applyPromotion(double percentage, DateTime start, DateTime end, PromoTarget target, PromoCustomerTarget customerTarget, {List<String>? selectedIds, Map<String, double>? individualPercentages}) async {
     state.whenData((products) async {
       final productsToUpdate = selectedIds == null 
           ? products 
@@ -368,8 +368,9 @@ class ProductNotifier extends StateNotifier<AsyncValue<List<Product>>> {
       
       try {
         for (var p in productsToUpdate) {
+          final pPercentage = individualPercentages?[p.id] ?? percentage;
           final data = {
-            'discount_percentage': percentage,
+            'discount_percentage': pPercentage,
             'promo_start': start.toIso8601String(),
             'promo_end': end.toIso8601String(),
             'promo_target': target.name,
@@ -384,8 +385,9 @@ class ProductNotifier extends StateNotifier<AsyncValue<List<Product>>> {
         
         state = AsyncValue.data(products.map((p) {
           if (selectedIds == null || selectedIds.contains(p.id)) {
+            final pPercentage = individualPercentages?[p.id] ?? percentage;
             return p.copyWith(
-              discountPercentage: percentage,
+              discountPercentage: pPercentage,
               promoStartDate: start,
               promoEndDate: end,
               promoTarget: target,

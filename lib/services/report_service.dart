@@ -158,7 +158,8 @@ class ReportService {
 
   static Future<void> generateExpenseLedger(List<ExpenseRecord> expenses) async {
     final doc = pw.Document();
-    final total = expenses.fold(0.0, (sum, e) => sum + e.amount);
+    final operationalExpenses = expenses.where((e) => e.isOperationalExpense).toList();
+    final total = operationalExpenses.fold(0.0, (sum, e) => sum + e.amount);
 
     doc.addPage(
       pw.MultiPage(
@@ -168,14 +169,14 @@ class ReportService {
         build: (context) => [
           _buildSummarySection({
             'Total Expenses': 'GHS ${total.toStringAsFixed(2)}',
-            'Entries': expenses.length.toString(),
+            'Entries': operationalExpenses.length.toString(),
           }),
           pw.SizedBox(height: 20),
           pw.TableHelper.fromTextArray(
             headerStyle: pw.TextStyle(fontWeight: pw.FontWeight.bold, color: PdfColors.white),
             headerDecoration: const pw.BoxDecoration(color: _primaryMaroon),
             headers: ['Date', 'Category', 'Description', 'Amount (GHS)'],
-            data: expenses.map((e) => [
+            data: operationalExpenses.map((e) => [
               DateFormat('yyyy-MM-dd').format(e.date),
               e.category,
               e.title,

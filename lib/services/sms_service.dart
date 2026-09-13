@@ -3,6 +3,7 @@ import 'package:flutter/foundation.dart';
 import 'package:http/http.dart' as http;
 import 'package:flutter_dotenv/flutter_dotenv.dart';
 import 'package:intl/intl.dart';
+import '../core/utils.dart';
 import '../models/sale_model.dart';
 import '../models/user_model.dart';
 
@@ -134,8 +135,8 @@ class SmsService {
 
     // Format Item Breakdown
     final String itemsSummary = sale.items.map((i) {
-      final qty = i.quantity % 1 == 0 ? i.quantity.toInt().toString() : i.quantity.toStringAsFixed(1);
-      return '$qty${i.product.unit} ${i.product.name}';
+      final formattedQty = WeightConverter.formatShort(i.quantity, unit: i.selectedUnit ?? i.product.unit);
+      return '$formattedQty ${i.product.name}';
     }).join(', ');
 
     String message = '$typeHeader #$receiptId - $shopName\n';
@@ -241,6 +242,52 @@ class SmsService {
     return await _sendSms(phone, message);
   }
 
+  static Future<bool> sendAdminDebtSettlementSms({
+    required String customerName,
+    required String customerPhone,
+    required String invoiceId,
+    required double amountPaid,
+    required double remainingBalance,
+    required DateTime paymentTime,
+    String? branchName,
+    List<String>? extraAdminPhones,
+  }) async {
+    final String shopName = branchName ?? 'Mi~Corazon Butchery';
+    final String cleanInvoice = invoiceId.startsWith('INV-')
+        ? invoiceId
+        : (invoiceId.length > 8 ? invoiceId.substring(invoiceId.length - 8).toUpperCase() : invoiceId.toUpperCase());
+    
+    final bool isFullSettlement = remainingBalance <= 0.01;
+    final String statusText = isFullSettlement 
+        ? 'FULL SETTLEMENT (Cleared)' 
+        : 'PARTIAL SETTLEMENT (Bal: GHS ${remainingBalance.toStringAsFixed(2)})';
+    
+    final String timeStr = DateFormat('MMM dd, yyyy HH:mm').format(paymentTime);
+
+    final String message = 
+        'DEBT PAYMENT ALERT - $shopName\n'
+        '• Customer: $customerName ($customerPhone)\n'
+        '• Invoice: #$cleanInvoice\n'
+        '• Amount Paid: GHS ${amountPaid.toStringAsFixed(2)}\n'
+        '• Status: $statusText\n'
+        '• Time: $timeStr\n'
+        'NOTE: This GHS ${amountPaid.toStringAsFixed(2)} cash is added to today\'s shop cash (till). Total cash at shop will be higher than today\'s direct sales by this amount.';
+
+    final Set<String> targetPhones = {_adminPhone};
+    if (extraAdminPhones != null) {
+      for (final p in extraAdminPhones) {
+        if (p.trim().isNotEmpty) targetPhones.add(p.trim());
+      }
+    }
+
+    bool sentAny = false;
+    for (final phone in targetPhones) {
+      final ok = await _sendSms(phone, message);
+      if (ok) sentAny = true;
+    }
+    return sentAny;
+  }
+
   static Future<void> sendDispatchSms({
     required String name,
     required String phone,
@@ -316,12 +363,27 @@ class SmsService {
     required double dailySales,
     required double tillBalance,
     required List<String> adminPhones,
+    double debtCollections = 0.0,
+    List<String>? debtDetails,
   }) async {
     final String date = DateFormat('EEE, MMM dd').format(DateTime.now());
-    final String message = 'DAILY SUMMARY ($date):\n'
-        '• Today\'s Sales: GHS ${dailySales.toStringAsFixed(2)}\n'
-        '• Cash at Shop: GHS ${tillBalance.toStringAsFixed(2)}\n\n'
-        'Please log in to Close Sales now or tomorrow morning. - Mi~Corazon System';
+    String message = 'DAILY SUMMARY ($date):\n'
+        '• Today\'s Direct Sales: GHS ${dailySales.toStringAsFixed(2)}\n';
+    
+    if (debtCollections > 0) {
+      message += '• Debt Collections: GHS ${debtCollections.toStringAsFixed(2)}\n';
+      if (debtDetails != null && debtDetails.isNotEmpty) {
+        for (final detail in debtDetails.take(3)) {
+          message += '  - $detail\n';
+        }
+      }
+    }
+    
+    message += '• Cash at Shop: GHS ${tillBalance.toStringAsFixed(2)}\n';
+    if (debtCollections > 0) {
+      message += '(Debt collections explain why Cash at Shop exceeds Direct Sales)\n';
+    }
+    message += '\nPlease log in to Close Sales now or tomorrow morning. - Mi~Corazon System';
 
     bool allSent = true;
     for (final phone in adminPhones) {

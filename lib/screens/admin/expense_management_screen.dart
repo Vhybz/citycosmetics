@@ -13,12 +13,122 @@ import '../../models/expense_model.dart';
 import '../../services/menu_service.dart';
 import 'package:image_picker/image_picker.dart';
 import '../../services/user_provider.dart';
+import '../../services/receipt_service.dart';
 
-class ExpenseManagementScreen extends ConsumerWidget {
+class ExpenseManagementScreen extends ConsumerStatefulWidget {
   const ExpenseManagementScreen({super.key});
 
   @override
-  Widget build(BuildContext context, WidgetRef ref) {
+  ConsumerState<ExpenseManagementScreen> createState() => _ExpenseManagementScreenState();
+}
+
+class _ExpenseManagementScreenState extends ConsumerState<ExpenseManagementScreen> {
+  String _searchQuery = '';
+  String _selectedCategory = 'All';
+  String _datePreset = 'All Time'; // 'All Time', 'Today', 'This Week', 'This Month', 'Custom'
+  DateTimeRange? _customDateRange;
+  String _receiptFilter = 'All'; // 'All', 'With Receipt', 'No Receipt'
+  String _sortBy = 'Date (Newest)'; // 'Date (Newest)', 'Date (Oldest)', 'Amount (Highest)', 'Amount (Lowest)'
+  final _searchController = TextEditingController();
+
+  @override
+  void dispose() {
+    _searchController.dispose();
+    super.dispose();
+  }
+
+  void _resetFilters() {
+    setState(() {
+      _searchQuery = '';
+      _searchController.clear();
+      _selectedCategory = 'All';
+      _datePreset = 'All Time';
+      _customDateRange = null;
+      _receiptFilter = 'All';
+      _sortBy = 'Date (Newest)';
+    });
+  }
+
+  bool get _hasActiveFilters =>
+      _searchQuery.isNotEmpty ||
+      _selectedCategory != 'All' ||
+      _datePreset != 'All Time' ||
+      _receiptFilter != 'All' ||
+      _sortBy != 'Date (Newest)';
+
+  List<ExpenseRecord> _getFilteredExpenses(List<ExpenseRecord> allExpenses) {
+    final now = DateTime.now();
+    final query = _searchQuery.trim().toLowerCase();
+
+    return allExpenses.where((e) {
+      // 1. Search filter
+      if (query.isNotEmpty) {
+        final matchesTitle = e.title.toLowerCase().contains(query);
+        final matchesCat = e.category.toLowerCase().contains(query);
+        final matchesNotes = e.notes?.toLowerCase().contains(query) ?? false;
+        final matchesAmount = e.amount.toString().contains(query);
+        if (!matchesTitle && !matchesCat && !matchesNotes && !matchesAmount) {
+          return false;
+        }
+      }
+
+      // 2. Category filter
+      if (_selectedCategory == 'All') {
+        if (!e.isOperationalExpense) return false;
+      } else if (e.category != _selectedCategory) {
+        return false;
+      }
+
+      // 3. Date range filter
+      if (_datePreset == 'Today') {
+        if (e.date.year != now.year || e.date.month != now.month || e.date.day != now.day) {
+          return false;
+        }
+      } else if (_datePreset == 'This Week') {
+        final startOfWeek = now.subtract(Duration(days: now.weekday - 1));
+        final start = DateTime(startOfWeek.year, startOfWeek.month, startOfWeek.day);
+        final endOfWeek = start.add(const Duration(days: 7));
+        if (e.date.isBefore(start) || !e.date.isBefore(endOfWeek)) {
+          return false;
+        }
+      } else if (_datePreset == 'This Month') {
+        if (e.date.year != now.year || e.date.month != now.month) {
+          return false;
+        }
+      } else if (_datePreset == 'Custom' && _customDateRange != null) {
+        final start = DateTime(_customDateRange!.start.year, _customDateRange!.start.month, _customDateRange!.start.day);
+        final end = DateTime(_customDateRange!.end.year, _customDateRange!.end.month, _customDateRange!.end.day, 23, 59, 59);
+        if (e.date.isBefore(start) || e.date.isAfter(end)) {
+          return false;
+        }
+      }
+
+      // 4. Receipt attachment filter
+      if (_receiptFilter == 'With Receipt' && e.receiptUrl == null) {
+        return false;
+      } else if (_receiptFilter == 'No Receipt' && e.receiptUrl != null) {
+        return false;
+      }
+
+      return true;
+    }).toList()
+      ..sort((a, b) {
+        switch (_sortBy) {
+          case 'Date (Oldest)':
+            return a.date.compareTo(b.date);
+          case 'Amount (Highest)':
+            return b.amount.compareTo(a.amount);
+          case 'Amount (Lowest)':
+            return a.amount.compareTo(b.amount);
+          case 'Date (Newest)':
+          default:
+            return b.date.compareTo(a.date);
+        }
+      });
+  }
+
+  @override
+  Widget build(BuildContext context) {
     final user = ref.watch(currentUserProvider);
     if (user == null) return const Center(child: CircularProgressIndicator());
 
@@ -26,6 +136,8 @@ class ExpenseManagementScreen extends ConsumerWidget {
     final expenseState = ref.watch(expenseProvider);
     final isDesktop = ResponsiveLayout.isDesktop(context);
     const currentRoute = '/admin/expenses';
+
+    final filteredExpenses = _getFilteredExpenses(expenseState.records);
 
     return RolePopScope(
       currentRoute: currentRoute,
@@ -63,7 +175,8 @@ class ExpenseManagementScreen extends ConsumerWidget {
                     const SizedBox(height: AppSpacing.xl),
                     _buildMonthlySummary(context, expenseState.records),
                     const SizedBox(height: AppSpacing.xl),
-                    _buildExpenseList(context, ref, expenseState.records),
+                    _buildFilterBar(context, expenseState, filteredExpenses, expenseState.records.length),
+                    _buildExpenseList(context, ref, filteredExpenses),
                   ],
                 ),
               ),
@@ -118,38 +231,355 @@ class ExpenseManagementScreen extends ConsumerWidget {
 
   Widget _buildMonthlySummary(BuildContext context, List<ExpenseRecord> expenses) {
     final theme = Theme.of(context);
-    final isMobile = ResponsiveLayout.isMobile(context);
     final now = DateTime.now();
-    final thisMonthExpenses = expenses
+    final monthExpensesList = expenses
         .where((e) => e.date.month == now.month && e.date.year == now.year)
+        .toList();
+    final thisMonthExpenses = monthExpensesList.fold(0.0, (sum, e) => sum + e.amount);
+    
+    final todayExpenses = expenses
+        .where((e) => DateUtils.isSameDay(e.date, now))
         .fold(0.0, (sum, e) => sum + e.amount);
 
-    return Container(
-      width: double.infinity,
-      padding: EdgeInsets.all(isMobile ? AppSpacing.l : AppSpacing.xl),
-      decoration: BoxDecoration(
-        color: theme.colorScheme.primary,
-        borderRadius: BorderRadius.circular(AppRadius.l),
-        boxShadow: [
-          BoxShadow(color: Colors.black.withValues(alpha: 0.2), blurRadius: 10, offset: const Offset(0, 4)),
-        ],
-      ),
-      child: Flex(
-        direction: isMobile ? Axis.vertical : Axis.horizontal,
-        crossAxisAlignment: isMobile ? CrossAxisAlignment.start : CrossAxisAlignment.center,
-        children: [
-          Icon(Icons.account_balance_rounded, color: Colors.white, size: isMobile ? 32 : 40),
-          SizedBox(width: isMobile ? 0 : AppSpacing.xl, height: isMobile ? AppSpacing.m : 0),
-          Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Text('${DateFormat('MMMM yyyy').format(now)} Total Expenses', 
-                style: TextStyle(color: Colors.white70, fontSize: isMobile ? 12 : 14)),
-              Text('₵ ${thisMonthExpenses.toStringAsFixed(2)}', 
-                style: TextStyle(color: Colors.white, fontSize: isMobile ? 24 : 32, fontWeight: FontWeight.bold)),
-            ],
+    return LayoutBuilder(builder: (context, constraints) {
+      final useColumn = constraints.maxWidth < 600;
+      
+      Widget card1 = Container(
+        padding: const EdgeInsets.all(AppSpacing.l),
+        decoration: BoxDecoration(
+          gradient: LinearGradient(
+            colors: [AppColors.primaryMaroon, AppColors.primaryMaroon.withValues(alpha: 0.85)],
+            begin: Alignment.topLeft,
+            end: Alignment.bottomRight,
           ),
+          borderRadius: BorderRadius.circular(AppRadius.l),
+          boxShadow: [
+            BoxShadow(color: AppColors.primaryMaroon.withValues(alpha: 0.25), blurRadius: 10, offset: const Offset(0, 4)),
+          ],
+        ),
+        child: Row(
+          children: [
+            Container(
+              padding: const EdgeInsets.all(12),
+              decoration: BoxDecoration(
+                color: Colors.white.withValues(alpha: 0.2),
+                shape: BoxShape.circle,
+              ),
+              child: const Icon(Icons.account_balance_wallet_rounded, color: Colors.white, size: 28),
+            ),
+            const SizedBox(width: AppSpacing.m),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text('${DateFormat('MMMM yyyy').format(now)} Expenses', 
+                    style: const TextStyle(color: Colors.white70, fontSize: 12, fontWeight: FontWeight.w500)),
+                  const SizedBox(height: 2),
+                  Text('₵ ${thisMonthExpenses.toStringAsFixed(2)}', 
+                    style: const TextStyle(color: Colors.white, fontSize: 24, fontWeight: FontWeight.w900)),
+                  Text('${monthExpensesList.length} entries this month', 
+                    style: const TextStyle(color: Colors.white60, fontSize: 10)),
+                ],
+              ),
+            ),
+          ],
+        ),
+      );
+
+      Widget card2 = Container(
+        padding: const EdgeInsets.all(AppSpacing.l),
+        decoration: BoxDecoration(
+          color: theme.colorScheme.surface,
+          borderRadius: BorderRadius.circular(AppRadius.l),
+          border: Border.all(color: theme.dividerColor.withValues(alpha: 0.15)),
+          boxShadow: [
+            BoxShadow(color: Colors.black.withValues(alpha: 0.03), blurRadius: 8, offset: const Offset(0, 2)),
+          ],
+        ),
+        child: Row(
+          children: [
+            Container(
+              padding: const EdgeInsets.all(12),
+              decoration: BoxDecoration(
+                color: Colors.orange.withValues(alpha: 0.15),
+                shape: BoxShape.circle,
+              ),
+              child: const Icon(Icons.today_rounded, color: Colors.orange, size: 28),
+            ),
+            const SizedBox(width: AppSpacing.m),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text("Today's Expenses", 
+                    style: TextStyle(color: theme.colorScheme.onSurfaceVariant, fontSize: 12, fontWeight: FontWeight.w500)),
+                  const SizedBox(height: 2),
+                  Text('₵ ${todayExpenses.toStringAsFixed(2)}', 
+                    style: TextStyle(color: theme.colorScheme.onSurface, fontSize: 24, fontWeight: FontWeight.w900)),
+                  Text(DateFormat('EEEE, MMM dd').format(now), 
+                    style: TextStyle(color: theme.colorScheme.onSurfaceVariant, fontSize: 10)),
+                ],
+              ),
+            ),
+          ],
+        ),
+      );
+
+      if (useColumn) {
+        return Column(
+          children: [
+            card1,
+            const SizedBox(height: AppSpacing.m),
+            card2,
+          ],
+        );
+      }
+
+      return Row(
+        children: [
+          Expanded(child: card1),
+          const SizedBox(width: AppSpacing.m),
+          Expanded(child: card2),
         ],
+      );
+    });
+  }
+
+  Widget _buildFilterBar(BuildContext context, ExpenseState expenseState, List<ExpenseRecord> filteredExpenses, int totalCount) {
+    final theme = Theme.of(context);
+    final isMobile = ResponsiveLayout.isMobile(context);
+
+    // Combine system categories and any unique categories present in expense records
+    final allCategories = <String>{
+      'All',
+      ...expenseState.categories,
+      ...expenseState.records.map((e) => e.category)
+    }.toList();
+
+    return Card(
+      elevation: 0,
+      margin: const EdgeInsets.only(bottom: AppSpacing.l),
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(AppRadius.m),
+        side: BorderSide(color: theme.dividerColor.withValues(alpha: 0.2)),
+      ),
+      child: Padding(
+        padding: const EdgeInsets.all(AppSpacing.m),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              children: [
+                const Icon(Icons.filter_alt_outlined, size: 20, color: AppColors.textLight),
+                const SizedBox(width: 8),
+                Text('Filter & Search Expenses', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 14, color: theme.colorScheme.onSurface)),
+                const Spacer(),
+                if (_hasActiveFilters)
+                  TextButton.icon(
+                    onPressed: _resetFilters,
+                    icon: const Icon(Icons.clear_all, size: 16, color: Colors.red),
+                    label: const Text('Reset Filters', style: TextStyle(fontSize: 12, color: Colors.red)),
+                  ),
+              ],
+            ),
+            const SizedBox(height: AppSpacing.m),
+            // Search Input
+            TextField(
+              controller: _searchController,
+              onChanged: (v) => setState(() => _searchQuery = v),
+              decoration: InputDecoration(
+                hintText: 'Search by title, category, notes, or amount...',
+                hintStyle: const TextStyle(fontSize: 12),
+                prefixIcon: const Icon(Icons.search, size: 18),
+                suffixIcon: _searchQuery.isNotEmpty
+                    ? IconButton(
+                        icon: const Icon(Icons.clear, size: 18),
+                        onPressed: () {
+                          _searchController.clear();
+                          setState(() => _searchQuery = '');
+                        },
+                      )
+                    : null,
+                isDense: true,
+                contentPadding: const EdgeInsets.symmetric(vertical: 10, horizontal: 12),
+                border: OutlineInputBorder(borderRadius: BorderRadius.circular(AppRadius.s)),
+              ),
+              style: const TextStyle(fontSize: 13),
+            ),
+            const SizedBox(height: AppSpacing.m),
+            // Quick Category Chips
+            SingleChildScrollView(
+              scrollDirection: Axis.horizontal,
+              child: Row(
+                children: allCategories.map((cat) {
+                  final isSelected = _selectedCategory == cat;
+                  return Padding(
+                    padding: const EdgeInsets.only(right: 6),
+                    child: FilterChip(
+                      selected: isSelected,
+                      label: Text(cat, style: TextStyle(fontSize: 11, fontWeight: isSelected ? FontWeight.bold : FontWeight.normal)),
+                      selectedColor: theme.colorScheme.primaryContainer,
+                      checkmarkColor: theme.colorScheme.primary,
+                      onSelected: (selected) {
+                        setState(() => _selectedCategory = selected ? cat : 'All');
+                      },
+                    ),
+                  );
+                }).toList(),
+              ),
+            ),
+            const SizedBox(height: AppSpacing.m),
+
+            // Dropdowns row / grid
+            Wrap(
+              spacing: AppSpacing.m,
+              runSpacing: AppSpacing.m,
+              crossAxisAlignment: WrapCrossAlignment.center,
+              children: [
+                // Category Filter
+                SizedBox(
+                  width: isMobile ? double.infinity : 170,
+                  child: DropdownButtonFormField<String>(
+                    value: allCategories.contains(_selectedCategory) ? _selectedCategory : 'All',
+                    isExpanded: true,
+                    decoration: const InputDecoration(
+                      labelText: 'Category',
+                      isDense: true,
+                      contentPadding: EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+                      border: OutlineInputBorder(),
+                    ),
+                    items: allCategories.map((c) => DropdownMenuItem<String>(value: c, child: Text(c, overflow: TextOverflow.ellipsis, style: const TextStyle(fontSize: 12)))).toList(),
+                    onChanged: (v) => setState(() => _selectedCategory = v ?? 'All'),
+                  ),
+                ),
+                // Date Preset Filter
+                SizedBox(
+                  width: isMobile ? double.infinity : 150,
+                  child: DropdownButtonFormField<String>(
+                    value: _datePreset,
+                    isExpanded: true,
+                    decoration: const InputDecoration(
+                      labelText: 'Date Range',
+                      isDense: true,
+                      contentPadding: EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+                      border: OutlineInputBorder(),
+                    ),
+                    items: ['All Time', 'Today', 'This Week', 'This Month', 'Custom'].map((d) => DropdownMenuItem<String>(value: d, child: Text(d, style: const TextStyle(fontSize: 12)))).toList(),
+                    onChanged: (v) async {
+                      if (v == 'Custom') {
+                        final picked = await showDateRangePicker(
+                          context: context,
+                          firstDate: DateTime(2020),
+                          lastDate: DateTime.now().add(const Duration(days: 1)),
+                          initialDateRange: _customDateRange ?? DateTimeRange(
+                            start: DateTime.now().subtract(const Duration(days: 30)),
+                            end: DateTime.now(),
+                          ),
+                        );
+                        if (picked != null) {
+                          setState(() {
+                            _datePreset = 'Custom';
+                            _customDateRange = picked;
+                          });
+                        }
+                      } else {
+                        setState(() {
+                          _datePreset = v ?? 'All Time';
+                          _customDateRange = null;
+                        });
+                      }
+                    },
+                  ),
+                ),
+                // Receipt Attachment Filter
+                SizedBox(
+                  width: isMobile ? double.infinity : 150,
+                  child: DropdownButtonFormField<String>(
+                    value: _receiptFilter,
+                    isExpanded: true,
+                    decoration: const InputDecoration(
+                      labelText: 'Receipt Image',
+                      isDense: true,
+                      contentPadding: EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+                      border: OutlineInputBorder(),
+                    ),
+                    items: ['All', 'With Receipt', 'No Receipt'].map((r) => DropdownMenuItem<String>(value: r, child: Text(r, style: const TextStyle(fontSize: 12)))).toList(),
+                    onChanged: (v) => setState(() => _receiptFilter = v ?? 'All'),
+                  ),
+                ),
+                // Sort By
+                SizedBox(
+                  width: isMobile ? double.infinity : 170,
+                  child: DropdownButtonFormField<String>(
+                    value: _sortBy,
+                    isExpanded: true,
+                    decoration: const InputDecoration(
+                      labelText: 'Sort By',
+                      isDense: true,
+                      contentPadding: EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+                      border: OutlineInputBorder(),
+                    ),
+                    items: ['Date (Newest)', 'Date (Oldest)', 'Amount (Highest)', 'Amount (Lowest)'].map((s) => DropdownMenuItem<String>(value: s, child: Text(s, style: const TextStyle(fontSize: 12)))).toList(),
+                    onChanged: (v) => setState(() => _sortBy = v ?? 'Date (Newest)'),
+                  ),
+                ),
+              ],
+            ),
+            if (_datePreset == 'Custom' && _customDateRange != null) ...[
+              const SizedBox(height: 8),
+              Chip(
+                avatar: const Icon(Icons.date_range, size: 14),
+                label: Text(
+                  '${DateFormat('MMM dd, yyyy').format(_customDateRange!.start)} - ${DateFormat('MMM dd, yyyy').format(_customDateRange!.end)}',
+                  style: const TextStyle(fontSize: 11),
+                ),
+                onDeleted: () => setState(() {
+                  _datePreset = 'All Time';
+                  _customDateRange = null;
+                }),
+              ),
+            ],
+            const SizedBox(height: AppSpacing.m),
+            const Divider(height: 1),
+            const SizedBox(height: 8),
+            // Filter summary bar
+            Row(
+              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+              children: [
+                Expanded(
+                  child: Wrap(
+                    spacing: 12,
+                    crossAxisAlignment: WrapCrossAlignment.center,
+                    children: [
+                      Text(
+                        'Showing ${filteredExpenses.length} of $totalCount records',
+                        style: TextStyle(fontSize: 12, color: theme.colorScheme.onSurfaceVariant),
+                      ),
+                      Text(
+                        'Sum: ₵ ${filteredExpenses.fold(0.0, (sum, e) => sum + e.amount).toStringAsFixed(2)}',
+                        style: const TextStyle(fontSize: 12, fontWeight: FontWeight.bold, color: Colors.red),
+                      ),
+                    ],
+                  ),
+                ),
+                ElevatedButton.icon(
+                  onPressed: filteredExpenses.isEmpty
+                      ? null
+                      : () => ReceiptService.printExpenseReport(
+                            filteredExpenses,
+                            title: 'Business Expenses Report${_selectedCategory != "All" ? " - $_selectedCategory" : ""}',
+                          ),
+                  icon: const Icon(Icons.picture_as_pdf, size: 16),
+                  label: Text(isMobile ? 'PDF' : 'Export PDF', style: const TextStyle(fontSize: 12)),
+                  style: ElevatedButton.styleFrom(
+                    padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+                    visualDensity: VisualDensity.compact,
+                  ),
+                ),
+              ],
+            ),
+          ],
+        ),
       ),
     );
   }
@@ -159,10 +589,31 @@ class ExpenseManagementScreen extends ConsumerWidget {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        Text('Recent Records', style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold, color: theme.colorScheme.onSurface)),
+        Text('Records (${expenses.length})', style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold, color: theme.colorScheme.onSurface)),
         const SizedBox(height: AppSpacing.m),
         if (expenses.isEmpty)
-          Center(child: Padding(padding: const EdgeInsets.all(40), child: Text('No expenses recorded yet.', style: TextStyle(color: theme.colorScheme.onSurfaceVariant))))
+          Center(
+            child: Padding(
+              padding: const EdgeInsets.all(40),
+              child: Column(
+                children: [
+                  Icon(Icons.receipt_long_outlined, size: 48, color: theme.colorScheme.onSurfaceVariant.withValues(alpha: 0.5)),
+                  const SizedBox(height: 12),
+                  Text(
+                    _hasActiveFilters ? 'No expenses match the selected filters.' : 'No expenses recorded yet.',
+                    style: TextStyle(color: theme.colorScheme.onSurfaceVariant),
+                  ),
+                  if (_hasActiveFilters) ...[
+                    const SizedBox(height: 8),
+                    TextButton(
+                      onPressed: _resetFilters,
+                      child: const Text('Clear Filters'),
+                    ),
+                  ],
+                ],
+              ),
+            ),
+          )
         else
           ListView.builder(
             shrinkWrap: true,
@@ -172,36 +623,100 @@ class ExpenseManagementScreen extends ConsumerWidget {
               final exp = expenses[index];
               return Card(
                 margin: const EdgeInsets.only(bottom: 12),
-                child: ListTile(
-                  leading: CircleAvatar(
-                    backgroundColor: theme.colorScheme.surfaceContainerHighest,
-                    child: Icon(
-                      exp.category == 'Bank Deposit' ? Icons.account_balance : Icons.receipt_long, 
-                      color: theme.colorScheme.primary
-                    ),
-                  ),
-                  title: Text(exp.title, style: TextStyle(fontWeight: FontWeight.bold, color: theme.colorScheme.onSurface)),
-                  subtitle: Text('${exp.category} • ${DateFormat('MMM dd, yyyy').format(exp.date)}', style: TextStyle(color: theme.colorScheme.onSurfaceVariant)),
-                  trailing: Row(
-                    mainAxisSize: MainAxisSize.min,
+                elevation: 0,
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(AppRadius.m),
+                  side: BorderSide(color: theme.dividerColor.withValues(alpha: 0.15)),
+                ),
+                child: Padding(
+                  padding: const EdgeInsets.all(AppSpacing.m),
+                  child: Row(
                     children: [
-                      if (exp.receiptUrl != null)
-                        IconButton(
-                          icon: const Icon(Icons.image, color: Colors.blue, size: 20),
-                          onPressed: () => _showReceiptViewer(context, exp.receiptUrl!),
+                      CircleAvatar(
+                        backgroundColor: theme.colorScheme.primaryContainer.withValues(alpha: 0.4),
+                        child: Icon(
+                          exp.category == 'Bank Deposit' ? Icons.account_balance : Icons.receipt_long, 
+                          color: theme.colorScheme.primary,
+                          size: 20,
                         ),
-                      Text('₵ ${exp.amount.toStringAsFixed(2)}', 
-                        style: const TextStyle(fontWeight: FontWeight.bold, color: Colors.red)),
-                      const SizedBox(width: 8),
-                      IconButton(
-                        icon: const Icon(Icons.edit_note, color: Colors.blue, size: 20),
-                        onPressed: () => _showExpenseDialog(context, ref, expense: exp),
-                        tooltip: 'Edit Expense',
                       ),
-                      IconButton(
-                        icon: const Icon(Icons.delete_outline, color: Colors.red, size: 20),
-                        onPressed: () => _confirmDeleteExpense(context, ref, exp),
-                        tooltip: 'Delete Expense',
+                      const SizedBox(width: AppSpacing.m),
+                      Expanded(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text(
+                              exp.title, 
+                              style: TextStyle(fontWeight: FontWeight.bold, fontSize: 13, color: theme.colorScheme.onSurface),
+                              maxLines: 2,
+                              overflow: TextOverflow.ellipsis,
+                            ),
+                            const SizedBox(height: 4),
+                            Wrap(
+                              spacing: 6,
+                              runSpacing: 4,
+                              crossAxisAlignment: WrapCrossAlignment.center,
+                              children: [
+                                Container(
+                                  padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                                  decoration: BoxDecoration(
+                                    color: theme.colorScheme.primary.withValues(alpha: 0.08),
+                                    borderRadius: BorderRadius.circular(4),
+                                  ),
+                                  child: Text(
+                                    exp.category, 
+                                    style: TextStyle(fontSize: 10, fontWeight: FontWeight.w600, color: theme.colorScheme.primary),
+                                  ),
+                                ),
+                                Text(
+                                  '• ${DateFormat('MMM dd, yyyy').format(exp.date)}', 
+                                  style: TextStyle(color: theme.colorScheme.onSurfaceVariant, fontSize: 11),
+                                ),
+                              ],
+                            ),
+                          ],
+                        ),
+                      ),
+                      const SizedBox(width: AppSpacing.m),
+                      Column(
+                        crossAxisAlignment: CrossAxisAlignment.end,
+                        children: [
+                          Text(
+                            '₵ ${exp.amount.toStringAsFixed(2)}', 
+                            style: const TextStyle(fontWeight: FontWeight.w900, fontSize: 14, color: Colors.red),
+                          ),
+                          const SizedBox(height: 4),
+                          Row(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              if (exp.receiptUrl != null)
+                                InkWell(
+                                  onTap: () => _showReceiptViewer(context, exp.receiptUrl!),
+                                  borderRadius: BorderRadius.circular(4),
+                                  child: const Padding(
+                                    padding: EdgeInsets.all(4),
+                                    child: Icon(Icons.image_outlined, color: Colors.blue, size: 18),
+                                  ),
+                                ),
+                              InkWell(
+                                onTap: () => _showExpenseDialog(context, ref, expense: exp),
+                                borderRadius: BorderRadius.circular(4),
+                                child: const Padding(
+                                  padding: EdgeInsets.all(4),
+                                  child: Icon(Icons.edit_note, color: Colors.blue, size: 18),
+                                ),
+                              ),
+                              InkWell(
+                                onTap: () => _confirmDeleteExpense(context, ref, exp),
+                                borderRadius: BorderRadius.circular(4),
+                                child: const Padding(
+                                  padding: EdgeInsets.all(4),
+                                  child: Icon(Icons.delete_outline, color: Colors.red, size: 18),
+                                ),
+                              ),
+                            ],
+                          ),
+                        ],
                       ),
                     ],
                   ),
@@ -330,11 +845,11 @@ class ExpenseManagementScreen extends ConsumerWidget {
                   ),
                   const SizedBox(height: 16),
                   DropdownButtonFormField<String>(
-                    initialValue: selectedCategory,
+                    value: selectedCategory,
                     decoration: const InputDecoration(labelText: 'Category'),
                     items: [
-                      ...expenseState.categories.map((c) => DropdownMenuItem(value: c, child: Text(c))),
-                      const DropdownMenuItem(value: 'Other', child: Text('Other')),
+                      ...expenseState.categories.map((c) => DropdownMenuItem<String>(value: c, child: Text(c))),
+                      const DropdownMenuItem<String>(value: 'Other', child: Text('Other')),
                     ],
                     onChanged: (v) => setState(() => selectedCategory = v!),
                   ),

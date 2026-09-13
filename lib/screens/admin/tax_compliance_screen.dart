@@ -52,6 +52,7 @@ class _TaxComplianceScreenState extends ConsumerState<TaxComplianceScreen> {
     }).toList();
 
     final monthlyExpenses = allExpenses.where((e) {
+      if (!e.isOperationalExpense) return false;
       if (e.date.year != _selectedDate.year) return false;
       
       if (_isQuarterly) {

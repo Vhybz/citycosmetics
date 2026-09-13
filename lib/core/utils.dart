@@ -35,15 +35,27 @@ class WeightConverter {
   static String formatShort(double weight, {String? unit}) {
     final lowerUnit = unit?.toLowerCase();
     if (lowerUnit == 'unit' || lowerUnit == 'qty' || lowerUnit == 'pcs') {
-      return '${weight.toStringAsFixed(0)} pcs';
+      final isInt = weight == weight.roundToDouble();
+      return '${isInt ? weight.toStringAsFixed(0) : weight.toStringAsFixed(1)} pcs';
     }
-    if (lowerUnit == 'g' || (weight < 0.1 && weight > 0)) {
-      return '${(weight * 1000).toStringAsFixed(0)}g';
+    if (lowerUnit == 'lb' || lowerUnit == 'lbs') {
+      final lbs = toLbs(weight);
+      final isInt = lbs == lbs.roundToDouble();
+      return '${isInt ? lbs.toStringAsFixed(0) : lbs.toStringAsFixed(1)} lb';
+    }
+    if (lowerUnit == 'g') {
+      final grams = toG(weight);
+      return '${grams.toStringAsFixed(0)}g';
+    }
+    if (lowerUnit != null && lowerUnit != 'kg' && lowerUnit != 't') {
+      final isInt = weight == weight.roundToDouble();
+      return '${isInt ? weight.toStringAsFixed(0) : weight.toStringAsFixed(1)} $unit';
     }
     if (weight >= 1000) {
       return '${(weight / 1000).toStringAsFixed(1)}t';
     }
-    return '${weight.toStringAsFixed(1)}kg';
+    final isInt = weight == weight.roundToDouble();
+    return '${isInt ? weight.toStringAsFixed(0) : weight.toStringAsFixed(1)}kg';
   }
 }
 

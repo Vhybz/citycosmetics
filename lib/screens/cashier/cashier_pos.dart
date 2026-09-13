@@ -249,6 +249,7 @@ class _CashierPOSState extends ConsumerState<CashierPOS> {
       quantity: item.quantity,
       priceAtSale: item.priceAtSale,
       originalPrice: item.originalPrice,
+      selectedUnit: item.selectedUnit ?? item.product.unit,
     )).toList();
 
     // Simple mock logic for discount/promo
@@ -359,7 +360,13 @@ class _CashierPOSState extends ConsumerState<CashierPOS> {
                         // Resume logic
                         ref.read(cartProvider.notifier).clear();
                         for (var item in h.items) {
-                          ref.read(cartProvider.notifier).addItemWithCustomPrice(item.product, item.quantity, item.priceAtSale, item.originalPrice);
+                          ref.read(cartProvider.notifier).addItemWithCustomPrice(
+                            item.product, 
+                            item.quantity, 
+                            item.priceAtSale, 
+                            item.originalPrice,
+                            selectedUnit: item.selectedUnit,
+                          );
                         }
                         ref.read(heldReceiptProvider.notifier).resumeReceipt(h);
                         Navigator.pop(context);
@@ -699,11 +706,14 @@ class _CashierPOSState extends ConsumerState<CashierPOS> {
       builder: (context) => ProductWeightDialog(
         product: product,
         customer: _selectedCustomer,
-        onAdd: (weight, price, original) {
-          ref.read(cartProvider.notifier).addItemWithCustomPrice(product, weight, price, original);
+        onAdd: (weight, price, original, selectedUnit) {
+          ref.read(cartProvider.notifier).addItemWithCustomPrice(
+            product, weight, price, original, selectedUnit: selectedUnit,
+          );
+          ScaffoldMessenger.of(context).hideCurrentSnackBar();
           ScaffoldMessenger.of(context).showSnackBar(
             SnackBar(
-              content: Text('${product.name} (${WeightConverter.formatShort(weight, unit: product.unit)}) added to cart'),
+              content: Text('${product.name} (${WeightConverter.formatShort(weight, unit: selectedUnit)}) added to cart'),
               duration: const Duration(seconds: 1),
             ),
           );
@@ -787,7 +797,7 @@ class _CashierPOSState extends ConsumerState<CashierPOS> {
                       category: item.product.category,
                       name: item.product.name,
                       qty: '1',
-                      weight: WeightConverter.formatShort(item.quantity, unit: item.product.unit),
+                      weight: WeightConverter.formatShort(item.quantity, unit: item.selectedUnit ?? item.product.unit),
                       amount: '₵${item.total.toStringAsFixed(2)}',
                       onDelete: () => notifier.removeItem(index),
                     );
@@ -1171,6 +1181,7 @@ class _CashierPOSState extends ConsumerState<CashierPOS> {
         quantity: item.quantity,
         priceAtSale: item.priceAtSale,
         originalPrice: item.originalPrice,
+        selectedUnit: item.selectedUnit ?? item.product.unit,
       )).toList(),
       totalAmount: finalTotal,
       totalDiscount: discount,
@@ -2063,7 +2074,7 @@ class _CashierPOSState extends ConsumerState<CashierPOS> {
                                         maxLines: 2,
                                         overflow: TextOverflow.ellipsis,
                                       ),
-                                      Text('${WeightConverter.formatShort(item.quantity, unit: item.product.unit)} x ₵${item.priceAtSale.toStringAsFixed(2)}', 
+                                      Text('${WeightConverter.formatShort(item.quantity, unit: item.selectedUnit ?? item.product.unit)} x ₵${item.priceAtSale.toStringAsFixed(2)}', 
                                         style: TextStyle(fontSize: 10, color: theme.colorScheme.onSurfaceVariant),
                                       ),
                                     ],
@@ -2522,7 +2533,7 @@ class _CashierPOSState extends ConsumerState<CashierPOS> {
 class ProductWeightDialog extends StatefulWidget {
   final Product product;
   final Customer? customer;
-  final Function(double weight, double price, double original) onAdd;
+  final Function(double weight, double price, double original, String unit) onAdd;
 
   const ProductWeightDialog({super.key, required this.product, this.customer, required this.onAdd});
 
@@ -2531,10 +2542,17 @@ class ProductWeightDialog extends StatefulWidget {
 }
 
 class _ProductWeightDialogState extends State<ProductWeightDialog> {
+  static const List<WeightUnit> _availableUnits = [
+    WeightUnit.kg,
+    WeightUnit.g,
+    WeightUnit.lb,
+    WeightUnit.unit,
+  ];
+
   final _formKey = GlobalKey<FormState>();
   late final TextEditingController _weightController;
   final _qtyController = TextEditingController(text: '1');
-  final _moneyController = TextEditingController(); // NEW: For money-to-weight calculation
+  final _moneyController = TextEditingController(); // For money-to-weight calculation
   WeightUnit _unit = WeightUnit.kg;
   double _weight = 1.0;
   int _quantity = 1;
@@ -2543,15 +2561,15 @@ class _ProductWeightDialogState extends State<ProductWeightDialog> {
   void _toggleUnit(WeightUnit unit) {
     if (_unit == unit) return;
     setState(() {
-      if (_unit != WeightUnit.unit && unit != WeightUnit.unit) {
-        if (unit == WeightUnit.kg) {
-          _weight = WeightConverter.toKg(_weight);
-        } else {
-          _weight = WeightConverter.toLb(_weight);
-        }
-      }
+      _weight = WeightConverter.convert(
+        value: _weight,
+        from: _unit,
+        to: unit,
+      );
       _unit = unit;
-      _weightController.text = _weight.toStringAsFixed(2);
+      _weightController.text = _weight.toStringAsFixed(
+        _unit == WeightUnit.unit ? 0 : (_unit == WeightUnit.g ? 0 : 2),
+      );
       _moneyController.clear(); // Clear money when unit changes to avoid confusion
     });
   }
@@ -2573,7 +2591,7 @@ class _ProductWeightDialogState extends State<ProductWeightDialog> {
       _weight = 1.0;
     }
     
-    _weightController = TextEditingController(text: _weight.toStringAsFixed(_unit == WeightUnit.unit ? 0 : 1));
+    _weightController = TextEditingController(text: _weight.toStringAsFixed(_unit == WeightUnit.unit ? 0 : (_unit == WeightUnit.g ? 0 : 1)));
   }
 
   @override
@@ -2594,16 +2612,19 @@ class _ProductWeightDialogState extends State<ProductWeightDialog> {
         final isWholesale = ref.watch(isWholesaleProvider);
         final isPcs = _unit == WeightUnit.unit;
         
-        final currentPrice = widget.product.getPrice(isWholesale, weight: isPcs ? 1.0 : _weight, customer: widget.customer);
+        final double kgWeight = isPcs 
+            ? _weight 
+            : WeightConverter.convert(value: _weight, from: _unit, to: WeightUnit.kg);
+
+        final currentPrice = widget.product.getPrice(isWholesale, weight: isPcs ? 1.0 : kgWeight, customer: widget.customer);
         final hasPromo = widget.product.isPromoActiveFor(isWholesale, widget.customer);
         final basePrice = isWholesale ? (widget.product.wholesalePrice) : (widget.product.retailPrice);
         
         double comparisonPrice = basePrice;
         final brackets = isWholesale ? widget.product.wholesaleBrackets : widget.product.retailBrackets;
-        if (!isPcs && _weight > 0 && brackets != null && brackets.isNotEmpty) {
-           double kgCheck = _unit == WeightUnit.lb ? WeightConverter.toKg(_weight) : (_unit == WeightUnit.g ? WeightConverter.fromG(_weight) : _weight);
+        if (!isPcs && kgWeight > 0 && brackets != null && brackets.isNotEmpty) {
            for (var bracket in brackets) {
-            if (kgCheck >= bracket.minWeight && kgCheck <= bracket.maxWeight) {
+            if (kgWeight >= bracket.minWeight && kgWeight <= bracket.maxWeight) {
               comparisonPrice = bracket.price;
               break;
             }
@@ -2612,13 +2633,6 @@ class _ProductWeightDialogState extends State<ProductWeightDialog> {
 
         final double finalEffectiveQty = _isHalf ? 0.5 : _weight;
         final double finalPrice = currentPrice;
-        
-        double kgWeight = _weight;
-        if (_unit == WeightUnit.lb) {
-          kgWeight = WeightConverter.toKg(_weight);
-        } else if (_unit == WeightUnit.g) {
-          kgWeight = WeightConverter.fromG(_weight);
-        }
 
         final double total = isPcs 
             ? (finalEffectiveQty * finalPrice * _quantity) 
@@ -2673,16 +2687,15 @@ class _ProductWeightDialogState extends State<ProductWeightDialog> {
                               final amount = double.tryParse(v) ?? 0;
                               if (amount > 0 && finalPrice > 0) {
                                 setState(() {
-                                  double calcWeight = amount / finalPrice;
-                                  // Normalize to selected unit
-                                  if (_unit == WeightUnit.lb) {
-                                    _weight = WeightConverter.toLb(calcWeight);
-                                  } else if (_unit == WeightUnit.g) {
-                                    _weight = calcWeight * 1000;
-                                  } else {
-                                    _weight = calcWeight;
-                                  }
-                                  _weightController.text = _weight.toStringAsFixed(_unit == WeightUnit.unit ? 0 : 2);
+                                  double calcKg = amount / finalPrice;
+                                  _weight = WeightConverter.convert(
+                                    value: calcKg,
+                                    from: WeightUnit.kg,
+                                    to: _unit,
+                                  );
+                                  _weightController.text = _weight.toStringAsFixed(
+                                    _unit == WeightUnit.unit ? 0 : (_unit == WeightUnit.g ? 0 : 2),
+                                  );
                                 });
                               }
                             },
@@ -2725,13 +2738,8 @@ class _ProductWeightDialogState extends State<ProductWeightDialog> {
                             const SizedBox(height: 4),
                             ToggleButtons(
                               constraints: const BoxConstraints(minWidth: 55, minHeight: 40),
-                              isSelected: [
-                                _unit == WeightUnit.kg, 
-                                _unit == WeightUnit.g,
-                                _unit == WeightUnit.lb,
-                                _unit == WeightUnit.unit,
-                              ],
-                              onPressed: (index) => _toggleUnit(WeightUnit.values[index]),
+                              isSelected: _availableUnits.map((u) => _unit == u).toList(),
+                              onPressed: (index) => _toggleUnit(_availableUnits[index]),
                               borderRadius: BorderRadius.circular(8),
                               selectedColor: Colors.white,
                               fillColor: theme.colorScheme.primary,
@@ -2759,7 +2767,7 @@ class _ProductWeightDialogState extends State<ProductWeightDialog> {
                               suffixText: isPcs ? 'pcs' : _unit.name,
                               contentPadding: const EdgeInsets.symmetric(vertical: 8),
                               errorText: (isPcs ? finalEffectiveQty : kgWeight) > widget.product.stockQuantity 
-                                ? 'Only ${widget.product.stockQuantity}${isPcs ? "pcs" : "kg"} available' 
+                                ? 'Only ${widget.product.stockQuantity.toStringAsFixed(1)}${isPcs ? "pcs" : "kg"} available' 
                                 : null,
                             ),
                             keyboardType: const TextInputType.numberWithOptions(decimal: true),
@@ -2772,7 +2780,9 @@ class _ProductWeightDialogState extends State<ProductWeightDialog> {
                               if (_isHalf) return null;
                               if (v == null || (double.tryParse(v) ?? 0) <= 0) return '!';
                               final val = double.tryParse(v) ?? 0;
-                              final checkWeight = isPcs ? val : (_unit == WeightUnit.kg ? val : WeightConverter.toKg(val));
+                              final checkWeight = isPcs 
+                                  ? val 
+                                  : WeightConverter.convert(value: val, from: _unit, to: WeightUnit.kg);
                               if (checkWeight > widget.product.stockQuantity) return 'Insufficient Stock';
                               return null;
                             },
@@ -2854,17 +2864,18 @@ class _ProductWeightDialogState extends State<ProductWeightDialog> {
                               
                               // Calculate final normalized weight/qty for inventory
                               double effectiveQty = _isHalf ? 0.5 : _weight;
-                              if (_unit == WeightUnit.lb && !_isHalf) {
-                                effectiveQty = WeightConverter.toKg(_weight);
-                              } else if (_unit == WeightUnit.g && !_isHalf) {
-                                effectiveQty = WeightConverter.fromG(_weight);
+                              if (!isPcs && !_isHalf) {
+                                effectiveQty = WeightConverter.convert(value: _weight, from: _unit, to: WeightUnit.kg);
                               }
 
                               final double actualSalePrice = widget.product.getPrice(isWholesale, weight: isPcs ? 1.0 : effectiveQty, customer: widget.customer);
                               
                               double comparisonPrice = isWholesale ? (widget.product.wholesalePrice) : (widget.product.retailPrice);
                               
-                              widget.onAdd(effectiveQty * (_isHalf ? 1 : _quantity), actualSalePrice, comparisonPrice);
+                              final String unitName = isPcs 
+                                  ? (['kg', 'g', 'lb', 'unit', 'pcs'].contains(widget.product.unit.toLowerCase()) ? 'pcs' : widget.product.unit) 
+                                  : _unit.name;
+                              widget.onAdd(effectiveQty * (_isHalf ? 1 : _quantity), actualSalePrice, comparisonPrice, unitName);
                               Navigator.pop(context);
                             }
                           },

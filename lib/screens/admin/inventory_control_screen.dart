@@ -393,6 +393,7 @@ class _InventoryControlScreenState extends ConsumerState<InventoryControlScreen>
 
   void _showPromotionDialog(BuildContext context, WidgetRef ref, List<Product> products, {Product? initialProduct}) {
     final formKey = GlobalKey<FormState>();
+    final promoSearchController = TextEditingController();
     final percentageController = TextEditingController(
       text: initialProduct != null 
         ? (initialProduct.discountPercentage % 1 == 0 
@@ -415,11 +416,68 @@ class _InventoryControlScreenState extends ConsumerState<InventoryControlScreen>
       }
     }
 
+    final customPriceControllers = <String, TextEditingController>{};
+    final customPercentageControllers = <String, TextEditingController>{};
+    final productManuallyEdited = <String, bool>{};
+
+    for (var p in products) {
+      customPriceControllers[p.id] = TextEditingController();
+      customPercentageControllers[p.id] = TextEditingController();
+      productManuallyEdited[p.id] = false;
+    }
+
+    void updatePricesFromGlobal() {
+      final globalPercentage = double.tryParse(percentageController.text) ?? 0.0;
+      for (var p in products) {
+        if (productManuallyEdited[p.id] != true) {
+          final newPrice = p.retailPrice * (1 - (globalPercentage / 100));
+          final newText = newPrice.toStringAsFixed(2);
+          if (customPriceControllers[p.id]!.text != newText) {
+             customPriceControllers[p.id]!.text = newText;
+          }
+          final newPctText = globalPercentage.toStringAsFixed(1);
+          if (customPercentageControllers[p.id]!.text != newPctText) {
+             customPercentageControllers[p.id]!.text = newPctText;
+          }
+        }
+      }
+    }
+
+    updatePricesFromGlobal();
+    
     showDialog(
       context: context,
       builder: (context) => StatefulBuilder(
         builder: (context, setState) {
-          final allSelected = selectedIds.length == products.length;
+          
+          percentageController.addListener(() {
+             setState(() {
+                updatePricesFromGlobal();
+             });
+          });
+
+          final searchQuery = promoSearchController.text.trim().toLowerCase();
+          final filteredProducts = searchQuery.isEmpty
+              ? products
+              : products.where((p) {
+                  final name = p.name.toLowerCase();
+                  final category = p.category.toLowerCase();
+                  final unit = p.unit.toLowerCase();
+                  final id = p.id.toLowerCase();
+                  final branch = p.branchCode?.toLowerCase() ?? '';
+                  final retail = p.retailPrice.toString();
+                  final wholesale = p.wholesalePrice.toString();
+                  return name.contains(searchQuery) ||
+                      category.contains(searchQuery) ||
+                      unit.contains(searchQuery) ||
+                      id.contains(searchQuery) ||
+                      branch.contains(searchQuery) ||
+                      retail.contains(searchQuery) ||
+                      wholesale.contains(searchQuery);
+                }).toList();
+
+          final allFilteredSelected = filteredProducts.isNotEmpty &&
+              filteredProducts.every((p) => selectedIds.contains(p.id));
 
           return AlertDialog(
             shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(AppRadius.l)),
@@ -530,16 +588,21 @@ class _InventoryControlScreenState extends ConsumerState<InventoryControlScreen>
                         alignment: WrapAlignment.spaceBetween,
                         crossAxisAlignment: WrapCrossAlignment.center,
                         children: [
-                          Text('Select Products:', 
+                          Text(
+                            'Select Products (${selectedIds.length}/${products.length}):', 
                             style: TextStyle(fontWeight: FontWeight.bold, color: theme.colorScheme.onSurface),
                           ),
                           TextButton(
                             onPressed: () {
                               setState(() {
-                                if (allSelected) {
-                                  selectedIds.clear();
+                                if (allFilteredSelected) {
+                                  for (var p in filteredProducts) {
+                                    selectedIds.remove(p.id);
+                                  }
                                 } else {
-                                  selectedIds.addAll(products.map((p) => p.id));
+                                  for (var p in filteredProducts) {
+                                    selectedIds.add(p.id);
+                                  }
                                 }
                               });
                             },
@@ -548,9 +611,39 @@ class _InventoryControlScreenState extends ConsumerState<InventoryControlScreen>
                               minimumSize: Size.zero,
                               tapTargetSize: MaterialTapTargetSize.shrinkWrap,
                             ),
-                            child: Text(allSelected ? 'Deselect All' : 'Select All', style: const TextStyle(fontSize: 12)),
+                            child: Text(
+                              searchQuery.isEmpty
+                                  ? (allFilteredSelected ? 'Deselect All' : 'Select All')
+                                  : (allFilteredSelected ? 'Deselect Visible' : 'Select Visible'),
+                              style: const TextStyle(fontSize: 12),
+                            ),
                           ),
                         ],
+                      ),
+                      const SizedBox(height: 8),
+                      TextField(
+                        controller: promoSearchController,
+                        onChanged: (_) => setState(() {}),
+                        decoration: InputDecoration(
+                          hintText: 'Search by name, category, code, price...',
+                          hintStyle: const TextStyle(fontSize: 12),
+                          prefixIcon: const Icon(Icons.search, size: 18),
+                          suffixIcon: promoSearchController.text.isNotEmpty
+                              ? IconButton(
+                                  icon: const Icon(Icons.clear, size: 18),
+                                  onPressed: () {
+                                    promoSearchController.clear();
+                                    setState(() {});
+                                  },
+                                )
+                              : null,
+                          isDense: true,
+                          contentPadding: const EdgeInsets.symmetric(vertical: 8, horizontal: 12),
+                          border: OutlineInputBorder(
+                            borderRadius: BorderRadius.circular(AppRadius.s),
+                          ),
+                        ),
+                        style: const TextStyle(fontSize: 12),
                       ),
                       const SizedBox(height: 8),
                       Container(
@@ -559,29 +652,118 @@ class _InventoryControlScreenState extends ConsumerState<InventoryControlScreen>
                           border: Border.all(color: theme.dividerColor),
                           borderRadius: BorderRadius.circular(AppRadius.s),
                         ),
-                        child: ListView.builder(
-                          itemCount: products.length,
-                          itemBuilder: (context, index) {
-                            final p = products[index];
-                            return CheckboxListTile(
-                              title: Text('${p.category} - ${p.name}', style: const TextStyle(fontSize: 13), maxLines: 1, overflow: TextOverflow.ellipsis),
-                              subtitle: Text('Current: ₵${p.retailPrice}', style: const TextStyle(fontSize: 10)),
-                              value: selectedIds.contains(p.id),
-                              onChanged: (val) {
-                                setState(() {
-                                  if (val!) {
-                                    selectedIds.add(p.id);
-                                  } else {
-                                    selectedIds.remove(p.id);
-                                  }
-                                });
-                              },
-                              dense: true,
-                              activeColor: theme.colorScheme.primary,
-                              controlAffinity: ListTileControlAffinity.leading,
-                            );
-                          },
-                        ),
+                        child: filteredProducts.isEmpty
+                            ? Center(
+                                child: Padding(
+                                  padding: const EdgeInsets.all(16.0),
+                                  child: Text(
+                                    'No products match "$searchQuery"',
+                                    style: TextStyle(fontSize: 12, color: theme.colorScheme.onSurfaceVariant),
+                                  ),
+                                ),
+                              )
+                            : ListView.builder(
+                                itemCount: filteredProducts.length,
+                                itemBuilder: (context, index) {
+                                  final p = filteredProducts[index];
+                                  return CheckboxListTile(
+                                title: Text('${p.category} - ${p.name}', style: const TextStyle(fontSize: 13), maxLines: 1, overflow: TextOverflow.ellipsis),
+                                subtitle: Text('Current: ₵${p.retailPrice}', style: const TextStyle(fontSize: 10)),
+                                value: selectedIds.contains(p.id),
+                                onChanged: (val) {
+                                  setState(() {
+                                    if (val!) {
+                                      selectedIds.add(p.id);
+                                    } else {
+                                      selectedIds.remove(p.id);
+                                    }
+                                  });
+                                },
+                                secondary: SizedBox(
+                                  width: 220,
+                                  child: Row(
+                                    mainAxisAlignment: MainAxisAlignment.end,
+                                    children: [
+                                      Column(
+                                        mainAxisAlignment: MainAxisAlignment.center,
+                                        crossAxisAlignment: CrossAxisAlignment.end,
+                                        children: [
+                                          Text(
+                                            '₵${p.retailPrice.toStringAsFixed(2)}',
+                                            style: const TextStyle(
+                                              fontSize: 10, 
+                                              color: Colors.grey, 
+                                              decoration: TextDecoration.lineThrough,
+                                            ),
+                                          ),
+                                          const SizedBox(height: 2),
+                                          SizedBox(
+                                            width: 60,
+                                            height: 24,
+                                            child: TextField(
+                                              controller: customPercentageControllers[p.id],
+                                              decoration: const InputDecoration(
+                                                suffixText: '% off',
+                                                suffixStyle: TextStyle(fontSize: 10, color: Colors.green),
+                                                isDense: true,
+                                                contentPadding: EdgeInsets.zero,
+                                                border: InputBorder.none,
+                                              ),
+                                              style: const TextStyle(
+                                                fontSize: 10,
+                                                color: Colors.green,
+                                                fontWeight: FontWeight.bold,
+                                              ),
+                                              textAlign: TextAlign.right,
+                                              keyboardType: const TextInputType.numberWithOptions(decimal: true),
+                                              inputFormatters: [
+                                                FilteringTextInputFormatter.allow(RegExp(r'^\d*\.?\d*')),
+                                              ],
+                                              onChanged: (val) {
+                                                productManuallyEdited[p.id] = true;
+                                                final newPct = double.tryParse(val) ?? 0.0;
+                                                final newPrice = p.retailPrice * (1 - (newPct / 100));
+                                                customPriceControllers[p.id]!.text = newPrice.toStringAsFixed(2);
+                                              },
+                                            ),
+                                          ),
+                                        ],
+                                      ),
+                                      const SizedBox(width: 8),
+                                      SizedBox(
+                                        width: 80,
+                                        child: TextField(
+                                          controller: customPriceControllers[p.id],
+                                          decoration: InputDecoration(
+                                            labelText: 'New Price',
+                                            isDense: true,
+                                            contentPadding: const EdgeInsets.symmetric(vertical: 8, horizontal: 8),
+                                            border: OutlineInputBorder(
+                                              borderRadius: BorderRadius.circular(4),
+                                            ),
+                                          ),
+                                          style: const TextStyle(fontSize: 12),
+                                          keyboardType: const TextInputType.numberWithOptions(decimal: true),
+                                          inputFormatters: [
+                                            FilteringTextInputFormatter.allow(RegExp(r'^\d*\.?\d*')),
+                                          ],
+                                          onChanged: (val) {
+                                            productManuallyEdited[p.id] = true;
+                                            final currentPrice = double.tryParse(val) ?? p.retailPrice;
+                                            final discount = p.retailPrice > 0 ? ((p.retailPrice - currentPrice) / p.retailPrice) * 100 : 0.0;
+                                            customPercentageControllers[p.id]!.text = discount.toStringAsFixed(1);
+                                          },
+                                        ),
+                                      ),
+                                    ],
+                                  ),
+                                ),
+                                dense: true,
+                                activeColor: theme.colorScheme.primary,
+                                controlAffinity: ListTileControlAffinity.leading,
+                              );
+                            },
+                          ),
                       ),
                     ],
                   ),
@@ -603,13 +785,23 @@ class _InventoryControlScreenState extends ConsumerState<InventoryControlScreen>
                 onPressed: (selectedIds.isEmpty || startDate == null || endDate == null) ? null : () {
                   if (formKey.currentState!.validate()) {
                     final percentage = double.tryParse(percentageController.text) ?? 0;
+                    
+                    final individualPercentages = <String, double>{};
+                    for (var pId in selectedIds) {
+                      if (productManuallyEdited[pId] == true) {
+                         final customPct = double.tryParse(customPercentageControllers[pId]!.text) ?? 0.0;
+                         individualPercentages[pId] = customPct > 0 ? customPct : 0;
+                      }
+                    }
+
                     ref.read(productsFutureProvider.notifier).applyPromotion(
                       percentage, 
                       startDate!, 
                       endDate!, 
                       selectedTarget,
                       selectedCustomerTarget,
-                      selectedIds: selectedIds.toList()
+                      selectedIds: selectedIds.toList(),
+                      individualPercentages: individualPercentages,
                     );
                     Navigator.pop(context);
                   }

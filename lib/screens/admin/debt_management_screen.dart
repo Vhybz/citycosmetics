@@ -10,6 +10,7 @@ import '../../services/sms_service.dart';
 import '../../services/receipt_service.dart';
 import '../../services/branch_provider.dart';
 import '../../models/sale_model.dart';
+import '../../models/user_model.dart';
 import 'package:intl/intl.dart';
 import 'package:flutter/services.dart';
 
@@ -711,10 +712,12 @@ class _DebtManagementScreenState extends ConsumerState<DebtManagementScreen> {
                   setState(() => isSaving = true);
                   
                   try {
+                    final paymentDate = DateTime.now();
                     final newPayment = PaymentDetail(
                       method: PaymentMethod.cash, 
                       amount: amount,
-                      reference: 'Manual Collection ${DateFormat('yyMMdd').format(DateTime.now())}',
+                      reference: 'Manual Collection ${DateFormat('yyMMdd').format(paymentDate)}',
+                      date: paymentDate,
                     );
                     
                     final updatedPayments = [...sale.payments, newPayment];
@@ -724,22 +727,43 @@ class _DebtManagementScreenState extends ConsumerState<DebtManagementScreen> {
 
                     await ref.read(saleHistoryProvider.notifier).updateSale(updatedSale);
                     
-                    // Send specialized Debt Payment SMS
-                    if (sale.customerPhone != null) {
+                    final branchName = ref.read(currentBranchProvider)?.name;
+
+                    // Send specialized Debt Payment SMS to Customer
+                    if (sale.customerPhone != null && sale.customerPhone!.isNotEmpty) {
                       await SmsService.sendDebtPaymentSms(
                         phone: sale.customerPhone!,
                         name: sale.customerName ?? 'Valued Customer',
                         invoiceId: sale.id,
                         amountPaid: amount,
                         remainingBalance: updatedSale.balance,
+                        branchName: branchName,
                       );
                     }
+
+                    // Send Admin Debt Settlement Alert SMS
+                    final allUsers = ref.read(userProvider);
+                    final adminPhones = allUsers
+                        .where((u) => (u.role == UserRole.admin || u.role == UserRole.superAdmin) && u.phone != null && u.phone!.isNotEmpty)
+                        .map((u) => u.phone!)
+                        .toList();
+
+                    await SmsService.sendAdminDebtSettlementSms(
+                      customerName: sale.customerName ?? 'Guest Customer',
+                      customerPhone: sale.customerPhone ?? 'N/A',
+                      invoiceId: sale.id,
+                      amountPaid: amount,
+                      remainingBalance: updatedSale.balance,
+                      paymentTime: paymentDate,
+                      branchName: branchName,
+                      extraAdminPhones: adminPhones,
+                    );
                     
                     if (context.mounted) {
                       Navigator.pop(context);
                       ScaffoldMessenger.of(context).showSnackBar(
                         SnackBar(
-                          content: Text('Payment of ₵${amount.toStringAsFixed(2)} recorded! SMS sent.'), 
+                          content: Text('Payment of ₵${amount.toStringAsFixed(2)} recorded! SMS alert sent to Admin.'), 
                           backgroundColor: Colors.green,
                           behavior: SnackBarBehavior.floating,
                         ),
