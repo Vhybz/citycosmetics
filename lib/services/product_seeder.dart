@@ -16,7 +16,7 @@ class ProductSeeder {
     
     final List<Map<String, List<String>>> data = [
       {
-        'CREAMS & LOTIONS': [
+        'BODY CREAMS & LOTIONS': [
           'EVERSHEEN CREAM B/S',
           'EVERSHEEN CREAM S/S',
           'QUEEN CREAM B/S',
@@ -40,11 +40,8 @@ class ProductSeeder {
           'HABIBA B/S',
           'HABIBA S/S',
           'CAROTONE CREAM B/S',
-          'BLUE SEAL VASE B/S',
-          'BLUE SEAL CRM S/S',
           'SKIN SUCCESS LOTION',
           'PALMERS LOT B/S',
-          'PALMERS THERAPY OIL',
           'NIVEA COCOA LOT',
           'NIVEA FAIRNS LOT',
           'NIVEA Q10',
@@ -60,11 +57,21 @@ class ProductSeeder {
         ]
       },
       {
-        'HAIRCARE & RELAXERS': [
+        'FACIAL SKINCARE': [
+          'ABANA FACIAL CREAM',
+          'WHITE SECRET FACIAL',
+          'DES FACIAL',
+          'BB CLEAR FACIAL',
+          'PAPAYA FACIAL',
+          'GREEN TEA FACIAL',
+          'AILKE FACIAL',
+        ]
+      },
+      {
+        'HAIRCARE, RELAXERS & STYLING': [
           'BO 16 HAIR MIST B/S',
           'BO 16 HAIR MIST S/S',
           'COLORANT DYE',
-          'FUNBACT BLISS',
           'EASY WAVES RELAXER B/S',
           'SPORTING POMADE',
           'SHEA 14 APPS',
@@ -93,7 +100,7 @@ class ProductSeeder {
         ]
       },
       {
-        'SHOWER GELS & BATHS': [
+        'BODY WASH & SHOWER GELS': [
           'DR TEALS BODY WASH',
           'FRUSIER BATH',
           'KLEAN BATH',
@@ -111,7 +118,7 @@ class ProductSeeder {
         ]
       },
       {
-        'PERFUMES & SPRAYS': [
+        'PERFUMES, SPRAYS & ROLL-ONS': [
           'ELEMENT PERF',
           'COLOUR ME SPRAY',
           'BERRIES WEEKEND PERFUME',
@@ -131,23 +138,24 @@ class ProductSeeder {
         ]
       },
       {
-        'FACIAL CARE': [
-          'ABANA FACIAL CREAM',
-          'WHITE SECRET FACIAL',
-          'DES FACIAL',
-          'BB CLEAR FACIAL',
-          'PAPAYA FACIAL',
-          'GREEN TEA FACIAL',
-          'AILKE FACIAL',
-        ]
-      },
-      {
-        'PETROLEUM JELLY & SOAPS': [
+        'PETROLEUM JELLY & OINTMENTS': [
+          'BLUE SEAL VASE B/S',
+          'BLUE SEAL CRM S/S',
           'PRINCESS COCOA PAA B/S',
           'COCOA PAA M/S',
           'ALOE PAA M/S',
           'PRINCESS CARROT PAA B/S',
           'PRINCESS CARROT PAA M/S',
+        ]
+      },
+      {
+        'BODY OILS & TREATMENTS': [
+          'PALMERS THERAPY OIL',
+        ]
+      },
+      {
+        'MEDICATED & SPECIALTY CREAMS': [
+          'FUNBACT BLISS',
         ]
       }
     ];
