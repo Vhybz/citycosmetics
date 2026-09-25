@@ -268,6 +268,18 @@ class OfflineSyncService {
         .toList();
   }
 
+  /// Returns total number of pending cloud sync actions in the queue.
+  static int getPendingCount() {
+    try {
+      if (!Hive.isBoxOpen(queueBoxName)) return 0;
+      return Hive.box(queueBoxName).length;
+    } catch (_) {
+      return 0;
+    }
+  }
+
+  static bool get isProcessing => _isProcessing;
+
   static void dispose() {
     _connectivitySubscription?.cancel();
   }

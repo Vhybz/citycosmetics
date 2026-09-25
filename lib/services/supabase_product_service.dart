@@ -68,7 +68,7 @@ class SupabaseProductService implements ProductService {
   }
 
   @override
-  Future<void> applyPromotion(String id, double percentage, DateTime? start, DateTime? end, PromoTarget target, PromoCustomerTarget customerTarget) async {
+  Future<void> applyPromotion(String id, double percentage, DateTime? start, DateTime? end, PromoTarget target, PromoCustomerTarget customerTarget, [String? targetCustomerId]) async {
     await _client
         .from('products')
         .update({
@@ -77,6 +77,7 @@ class SupabaseProductService implements ProductService {
           'promo_end': end?.toIso8601String(),
           'promo_target': target.name,
           'promo_customer_target': customerTarget.name,
+          'target_customer_id': targetCustomerId,
         })
         .eq('id', id);
   }

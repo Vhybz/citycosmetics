@@ -10,7 +10,6 @@ import '../../services/user_provider.dart';
 import '../../services/sale_provider.dart';
 import '../../services/expense_provider.dart';
 import '../../services/report_service.dart';
-import '../../models/sale_model.dart';
 
 class TaxComplianceScreen extends ConsumerStatefulWidget {
   const TaxComplianceScreen({super.key});
@@ -40,7 +39,7 @@ class _TaxComplianceScreenState extends ConsumerState<TaxComplianceScreen> {
 
     // Filter by selected range (Month or Quarter)
     final monthlySales = allSales.where((s) {
-      if (s.status == SaleStatus.cancelled) return false;
+      if (!s.isActive) return false;
       if (s.timestamp.year != _selectedDate.year) return false;
       
       if (_isQuarterly) {

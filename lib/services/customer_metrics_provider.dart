@@ -11,7 +11,7 @@ final customerMetricsProvider = Provider<Map<String, CustomerMetric>>((ref) {
 
   for (final customer in customers) {
     final customerSales = sales
-        .where((s) => s.customerPhone == customer.phone)
+        .where((s) => s.customerPhone == customer.phone && s.isActive)
         .toList()
       ..sort((a, b) => a.timestamp.compareTo(b.timestamp));
 

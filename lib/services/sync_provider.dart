@@ -11,41 +11,102 @@ import 'sale_provider.dart';
 import 'notification_service.dart';
 import 'offline_sync_service.dart';
 
-class SyncNotifier extends StateNotifier<DateTime> with WidgetsBindingObserver {
+class CloudSyncState {
+  final DateTime lastSynced;
+  final bool isSyncing;
+  final bool isConnected;
+  final int pendingCount;
+
+  const CloudSyncState({
+    required this.lastSynced,
+    this.isSyncing = false,
+    this.isConnected = true,
+    this.pendingCount = 0,
+  });
+
+  CloudSyncState copyWith({
+    DateTime? lastSynced,
+    bool? isSyncing,
+    bool? isConnected,
+    int? pendingCount,
+  }) {
+    return CloudSyncState(
+      lastSynced: lastSynced ?? this.lastSynced,
+      isSyncing: isSyncing ?? this.isSyncing,
+      isConnected: isConnected ?? this.isConnected,
+      pendingCount: pendingCount ?? this.pendingCount,
+    );
+  }
+}
+
+class SyncNotifier extends StateNotifier<CloudSyncState> with WidgetsBindingObserver {
   final Ref ref;
   Timer? _timer;
-  bool _isSyncing = false;
+  StreamSubscription<List<ConnectivityResult>>? _connectivitySub;
 
-  SyncNotifier(this.ref) : super(DateTime.now()) {
+  SyncNotifier(this.ref) : super(CloudSyncState(lastSynced: DateTime.now())) {
     WidgetsBinding.instance.addObserver(this);
+    _listenConnectivity();
     _startSyncTimer();
     // Initial sync on startup
-    _syncAll();
+    syncAll();
+  }
+
+  void _listenConnectivity() {
+    _connectivitySub = Connectivity().onConnectivityChanged.listen((results) {
+      final isOffline = results.every((result) => result == ConnectivityResult.none);
+      if (mounted) {
+        state = state.copyWith(isConnected: !isOffline);
+        if (!isOffline) {
+          syncAll();
+        }
+      }
+    });
   }
 
   @override
   void didChangeAppLifecycleState(AppLifecycleState state) {
     if (state == AppLifecycleState.resumed) {
       debugPrint('Sync Monitor: App Resumed. Forcing immediate cloud sync...');
-      _syncAll();
+      syncAll();
     }
   }
 
   void _startSyncTimer() {
     _timer?.cancel();
     _timer = Timer.periodic(const Duration(seconds: 30), (timer) {
-      _syncAll();
+      syncAll();
     });
   }
 
-  Future<void> _syncAll() async {
-    if (!mounted || _isSyncing) return;
+  Future<void> syncAll() async {
+    if (!mounted || state.isSyncing) return;
 
     try {
-      final user = ref.read(currentUserProvider);
-      if (user == null) return;
+      final results = await Connectivity().checkConnectivity();
+      final isOffline = results.every((result) => result == ConnectivityResult.none);
+      if (isOffline) {
+        if (mounted) {
+          state = state.copyWith(
+            isConnected: false,
+            isSyncing: false,
+            pendingCount: OfflineSyncService.getPendingCount(),
+          );
+        }
+        return;
+      }
 
-      _isSyncing = true;
+      final user = ref.read(currentUserProvider);
+      if (user == null) {
+        if (mounted) {
+          state = state.copyWith(isConnected: true, isSyncing: false);
+        }
+        return;
+      }
+
+      if (mounted) {
+        state = state.copyWith(isSyncing: true, isConnected: true);
+      }
       
       // 1. Process offline queue first
       await OfflineSyncService.processQueue();
@@ -62,12 +123,21 @@ class SyncNotifier extends StateNotifier<DateTime> with WidgetsBindingObserver {
       ]);
 
       if (mounted) {
-        state = DateTime.now(); 
+        state = state.copyWith(
+          isSyncing: false,
+          isConnected: true,
+          lastSynced: DateTime.now(),
+          pendingCount: OfflineSyncService.getPendingCount(),
+        );
       }
     } catch (e) {
       debugPrint('Sync Heartbeat Warning: $e');
-    } finally {
-      _isSyncing = false;
+      if (mounted) {
+        state = state.copyWith(
+          isSyncing: false,
+          pendingCount: OfflineSyncService.getPendingCount(),
+        );
+      }
     }
   }
 
@@ -83,12 +153,13 @@ class SyncNotifier extends StateNotifier<DateTime> with WidgetsBindingObserver {
   @override
   void dispose() {
     WidgetsBinding.instance.removeObserver(this);
+    _connectivitySub?.cancel();
     _timer?.cancel();
     super.dispose();
   }
 }
 
-final syncProvider = StateNotifierProvider<SyncNotifier, DateTime>((ref) {
+final syncProvider = StateNotifierProvider<SyncNotifier, CloudSyncState>((ref) {
   return SyncNotifier(ref);
 });
 

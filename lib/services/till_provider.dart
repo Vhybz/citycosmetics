@@ -84,7 +84,7 @@ class TillNotifier extends StateNotifier<TillState> {
     final sales = ref.read(saleHistoryProvider);
     final expenses = ref.read(expenseProvider).records;
 
-    // 1. Extract Cash Payment Movements from Sales (Only Physical Cash goes into Till)
+    // 1. Extract Payment Movements from Sales (Includes Cash, MoMo, and Bank)
     final List<TillMovement> movements = [];
     for (var sale in sales) {
       if (sale.status == SaleStatus.cancelled || sale.status == SaleStatus.reversed) continue;
@@ -92,9 +92,6 @@ class TillNotifier extends StateNotifier<TillState> {
       for (int i = 0; i < sale.payments.length; i++) {
         final p = sale.payments[i];
         if (p.amount <= 0) continue;
-
-        // Only Physical Cash payments enter the Cash Till
-        if (p.method != PaymentMethod.cash) continue;
 
         final pDate = p.date ?? sale.timestamp;
         
@@ -104,10 +101,14 @@ class TillNotifier extends StateNotifier<TillState> {
 
         final invoiceShort = sale.id.length > 8 ? sale.id.substring(sale.id.length - 8).toUpperCase() : sale.id.toUpperCase();
 
-        final title = isDebtRepayment ? 'Debt Collection (Cash)' : 'Sale Received (Cash)';
+        final methodLabel = p.method == PaymentMethod.cash 
+            ? 'Cash' 
+            : (p.method == PaymentMethod.mobileMoney ? 'MoMo' : 'Bank');
+
+        final title = isDebtRepayment ? 'Debt Collection ($methodLabel)' : 'Sale Received ($methodLabel)';
         final description = isDebtRepayment
-            ? 'Debt payment by ${sale.customerName ?? "Customer"} for #$invoiceShort'
-            : 'Invoice #$invoiceShort';
+            ? 'Debt payment by ${sale.customerName ?? "Customer"} for #$invoiceShort ($methodLabel)'
+            : 'Invoice #$invoiceShort ($methodLabel)';
 
         movements.add(TillMovement(
           id: '${sale.id}_p$i',

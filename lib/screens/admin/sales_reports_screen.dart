@@ -188,7 +188,7 @@ class _SalesReportsScreenState extends ConsumerState<SalesReportsScreen> with Si
     double totalProfit = 0;
 
     for (var sale in filteredSales) {
-      if (sale.status == SaleStatus.cancelled) continue;
+      if (!sale.isActive) continue;
       totalSales += sale.totalAmount;
       totalProfit += (sale.totalAmount - sale.totalCost);
       for (var item in sale.items) {
@@ -496,7 +496,7 @@ class _SalesReportsScreenState extends ConsumerState<SalesReportsScreen> with Si
   }
 
   Widget _buildSummaryCards(BuildContext context, List<SaleRecord> sales, List<dynamic> expenses, double tillBalance) {
-    final totalRevenue = sales.where((s) => s.status != SaleStatus.cancelled).fold(0.0, (sum, sale) => sum + sale.totalAmount);
+    final totalRevenue = sales.where((s) => s.isActive).fold(0.0, (sum, sale) => sum + sale.totalAmount);
     final totalExpenses = expenses.fold(0.0, (sum, e) => sum + (e.amount as double));
     final netProfit = totalRevenue - totalExpenses;
 
@@ -588,7 +588,7 @@ class _SalesReportsScreenState extends ConsumerState<SalesReportsScreen> with Si
         s.timestamp.day == date.day && 
         s.timestamp.month == date.month && 
         s.timestamp.year == date.year &&
-        s.status != SaleStatus.cancelled
+        s.isActive
       );
       
       dailyRevenue[i] = daySales.fold(0.0, (sum, s) => sum + s.totalAmount);
@@ -613,12 +613,24 @@ class _SalesReportsScreenState extends ConsumerState<SalesReportsScreen> with Si
           Expanded(
             child: LineChart(
               LineChartData(
+                minX: 0,
+                maxX: 6,
                 gridData: const FlGridData(show: false),
                 titlesData: FlTitlesData(
                   bottomTitles: AxisTitles(
                     sideTitles: SideTitles(
                       showTitles: true,
-                      getTitlesWidget: (val, meta) => Text(labels[val.toInt()], style: const TextStyle(fontSize: 10)),
+                      interval: 1,
+                      getTitlesWidget: (val, meta) {
+                        final index = val.toInt();
+                        if (index >= 0 && index < labels.length) {
+                          return SideTitleWidget(
+                            meta: meta,
+                            child: Text(labels[index], style: const TextStyle(fontSize: 9, fontWeight: FontWeight.bold)),
+                          );
+                        }
+                        return const SizedBox.shrink();
+                      },
                     ),
                   ),
                   leftTitles: const AxisTitles(sideTitles: SideTitles(showTitles: false)),
@@ -1102,6 +1114,7 @@ class _SalesReportsScreenState extends ConsumerState<SalesReportsScreen> with Si
   void _showReceiptOptionsDialog(BuildContext context, SaleRecord sale, WidgetRef ref) {
     final currentBranch = ref.read(currentBranchProvider);
     bool isProcessing = false;
+    final isDebt = sale.balance > 0.01;
 
     showDialog(
       context: context,
@@ -1136,9 +1149,12 @@ class _SalesReportsScreenState extends ConsumerState<SalesReportsScreen> with Si
                     context,
                     icon: Icons.sms_rounded,
                     title: 'SEND VIA SMS',
-                    subtitle: sale.customerPhone ?? 'Enter custom number',
-                    enabled: true,
+                    subtitle: isDebt 
+                        ? 'Disabled for debts • Send reminder from Debt Tracker' 
+                        : (sale.customerPhone ?? 'Enter custom number'),
+                    enabled: !isDebt,
                     onTap: () async {
+                      if (isDebt) return;
                       String? targetPhone = sale.customerPhone;
                       if (targetPhone == null || targetPhone.isEmpty) {
                         targetPhone = await PhonePromptDialog.show(context);

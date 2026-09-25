@@ -114,7 +114,16 @@ class SmsService {
     double? discountAmount,
     String? branchName,
     String? customPhone,
+    bool allowDebtSms = false,
   }) async {
+    final bool isDebt = sale.balance > 0.01;
+    // When a sale is recorded as debt, do NOT send SMS instantly.
+    // Debt reminders are only sent when user sends reminder at Debt Tracker.
+    if (isDebt && !allowDebtSms) {
+      debugPrint('SmsService: Skipped instant receipt SMS for debt sale #${sale.id}. Reminders are handled via Debt Tracker.');
+      return false;
+    }
+
     final String? targetPhone = (customPhone != null && customPhone.trim().isNotEmpty)
         ? customPhone.trim()
         : sale.customerPhone;
@@ -124,7 +133,6 @@ class SmsService {
       return false;
     }
 
-    final bool isDebt = sale.balance > 0.01;
     final String typeHeader = isDebt ? 'DEBT INVOICE' : 'RECEIPT';
     final String shopName = branchName ?? 'Mi~Corazon Butchery';
 
@@ -216,11 +224,27 @@ class SmsService {
     await _sendSms(phone, message);
   }
 
-  static Future<void> sendDebtReminderSms(SaleRecord sale, {String? branchName}) async {
-    if (sale.customerPhone == null || sale.customerPhone!.isEmpty) return;
+  static Future<bool> sendDebtReminderSms(
+    SaleRecord sale, {
+    String? branchName,
+    String? customPhone,
+  }) async {
+    final String? targetPhone = (customPhone != null && customPhone.trim().isNotEmpty)
+        ? customPhone.trim()
+        : sale.customerPhone;
+
+    if (targetPhone == null || targetPhone.trim().isEmpty) {
+      debugPrint('sendDebtReminderSms: No phone number provided.');
+      return false;
+    }
+
     final String shopName = branchName ?? 'Mi~Corazon Butchery';
-    final String message = 'DEBT REMINDER: Hello ${sale.customerName}, this is a reminder regarding your outstanding balance of GHC${sale.balance.toStringAsFixed(2)} for invoice ${sale.id} at $shopName. Please settle as soon as possible.';
-    await _sendSms(sale.customerPhone!, message);
+    final String invoiceId = sale.id.startsWith('INV-')
+        ? sale.id
+        : (sale.id.length > 8 ? sale.id.substring(sale.id.length - 8).toUpperCase() : sale.id.toUpperCase());
+
+    final String message = 'DEBT REMINDER: Hello ${sale.customerName ?? "Valued Customer"}, this is a reminder regarding your outstanding balance of GHS ${sale.balance.toStringAsFixed(2)} for invoice #$invoiceId at $shopName. Please settle as soon as possible. Thank you!';
+    return await _sendSms(targetPhone, message);
   }
 
   static Future<bool> sendDebtPaymentSms({

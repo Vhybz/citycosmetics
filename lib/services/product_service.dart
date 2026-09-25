@@ -20,7 +20,7 @@ abstract class ProductService {
   Future<void> updateProduct(Product product);
   Future<void> deleteProduct(String id);
   Future<void> updateStock(String id, double newQuantity);
-  Future<void> applyPromotion(String id, double percentage, DateTime? start, DateTime? end, PromoTarget target, PromoCustomerTarget customerTarget);
+  Future<void> applyPromotion(String id, double percentage, DateTime? start, DateTime? end, PromoTarget target, PromoCustomerTarget customerTarget, [String? targetCustomerId]);
   Future<String?> uploadProductImage(Uint8List bytes, String fileName);
   Stream<List<Product>> watchProducts(String branchCode);
 }
@@ -360,7 +360,7 @@ class ProductNotifier extends StateNotifier<AsyncValue<List<Product>>> {
     }
   }
 
-  Future<void> applyPromotion(double percentage, DateTime start, DateTime end, PromoTarget target, PromoCustomerTarget customerTarget, {List<String>? selectedIds, Map<String, double>? individualPercentages}) async {
+  Future<void> applyPromotion(double percentage, DateTime start, DateTime end, PromoTarget target, PromoCustomerTarget customerTarget, {List<String>? selectedIds, Map<String, double>? individualPercentages, String? targetCustomerId}) async {
     state.whenData((products) async {
       final productsToUpdate = selectedIds == null 
           ? products 
@@ -375,6 +375,7 @@ class ProductNotifier extends StateNotifier<AsyncValue<List<Product>>> {
             'promo_end': end.toIso8601String(),
             'promo_target': target.name,
             'promo_customer_target': customerTarget.name,
+            'target_customer_id': targetCustomerId,
           };
           
           await OfflineSyncService.addToQueue(
@@ -392,6 +393,7 @@ class ProductNotifier extends StateNotifier<AsyncValue<List<Product>>> {
               promoEndDate: end,
               promoTarget: target,
               promoCustomerTarget: customerTarget,
+              targetCustomerId: targetCustomerId,
             );
           }
           return p;
@@ -413,6 +415,7 @@ class ProductNotifier extends StateNotifier<AsyncValue<List<Product>>> {
               'promo_end': null,
               'promo_target': PromoTarget.both.name,
               'promo_customer_target': PromoCustomerTarget.all.name,
+              'target_customer_id': null,
             };
             
             await OfflineSyncService.addToQueue(
@@ -425,6 +428,7 @@ class ProductNotifier extends StateNotifier<AsyncValue<List<Product>>> {
           discountPercentage: 0,
           promoStartDate: null,
           promoEndDate: null,
+          targetCustomerId: null,
         )).toList());
       } catch (e) {
         debugPrint('Clear Promotions Error: $e');

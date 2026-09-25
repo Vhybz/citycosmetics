@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
+import '../models/user_model.dart';
 import '../core/constants.dart';
 import '../widgets/main_app_bar.dart';
 import '../widgets/responsive_layout.dart';
@@ -153,6 +155,74 @@ class SettingsScreen extends ConsumerWidget {
                           'Security',
                           Icons.security_outlined,
                           [
+                            SwitchListTile(
+                              secondary: const Icon(Icons.pin_rounded),
+                              title: const Text('Use 4-Digit Security PIN'),
+                              subtitle: Text(user.isPasscodeEnabled 
+                                ? 'PIN protection active • Screen lock and fast handover enabled' 
+                                : 'PIN protection disabled'),
+                              value: user.isPasscodeEnabled,
+                              activeThumbColor: theme.colorScheme.primary,
+                              onChanged: (bool enabled) async {
+                                if (enabled) {
+                                  if (user.passcode == null || user.passcode!.isEmpty) {
+                                    _showPinSetupDialog(context, ref, user);
+                                  } else {
+                                    await ref.read(userProvider.notifier).setPasscodeEnabled(user.id, true);
+                                    if (context.mounted) {
+                                      ScaffoldMessenger.of(context).showSnackBar(
+                                        const SnackBar(content: Text('4-Digit Security PIN enabled.'), backgroundColor: Colors.green),
+                                      );
+                                    }
+                                  }
+                                } else {
+                                  await ref.read(userProvider.notifier).setPasscodeEnabled(user.id, false);
+                                  if (context.mounted) {
+                                    ScaffoldMessenger.of(context).showSnackBar(
+                                      const SnackBar(content: Text('4-Digit Security PIN disabled.'), backgroundColor: Colors.orange),
+                                    );
+                                  }
+                                }
+                              },
+                            ),
+                            if (user.isPasscodeEnabled) ...[
+                              const Divider(height: 1),
+                              ListTile(
+                                leading: const Icon(Icons.pin_outlined),
+                                title: const Text('Configure Security PIN'),
+                                subtitle: Text(user.passcode != null && user.passcode!.isNotEmpty
+                                    ? 'PIN is configured (• • • •)' 
+                                    : 'No PIN set (Click to set)'),
+                                trailing: TextButton(
+                                  onPressed: () => _showPinSetupDialog(context, ref, user),
+                                  child: Text(
+                                    user.passcode != null && user.passcode!.isNotEmpty ? 'CHANGE PIN' : 'SET PIN',
+                                    style: const TextStyle(fontWeight: FontWeight.bold),
+                                  ),
+                                ),
+                              ),
+                              const Divider(height: 1),
+                              ListTile(
+                                leading: const Icon(Icons.lock_clock_outlined, color: Colors.orange),
+                                title: const Text('Lock Account Now', style: TextStyle(fontWeight: FontWeight.w600)),
+                                subtitle: const Text('Instantly lock your screen with your 4-digit PIN'),
+                                trailing: ElevatedButton.icon(
+                                  onPressed: () {
+                                    HapticFeedback.mediumImpact();
+                                    ref.read(passcodeUnlockedProvider.notifier).state = false;
+                                  },
+                                  icon: const Icon(Icons.lock_rounded, size: 16),
+                                  label: const Text('LOCK NOW'),
+                                  style: ElevatedButton.styleFrom(
+                                    backgroundColor: AppColors.primaryMaroon,
+                                    foregroundColor: Colors.white,
+                                    padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                                    textStyle: const TextStyle(fontSize: 12, fontWeight: FontWeight.bold),
+                                  ),
+                                ),
+                              ),
+                            ],
+                            const Divider(height: 1),
                             ListTile(
                               leading: const Icon(Icons.lock_outline),
                               title: const Text('Update Password'),
@@ -337,6 +407,133 @@ class SettingsScreen extends ConsumerWidget {
             child: const Text('Update Password'),
           ),
         ],
+      ),
+    );
+  }
+
+  void _showPinSetupDialog(BuildContext context, WidgetRef ref, UserAccount user) {
+    final pinController = TextEditingController();
+    final confirmPinController = TextEditingController();
+    final formKey = GlobalKey<FormState>();
+    bool obscure = true;
+    bool isSaving = false;
+
+    showDialog(
+      context: context,
+      builder: (context) => StatefulBuilder(
+        builder: (context, setDialogState) => AlertDialog(
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(AppRadius.l)),
+          title: Row(
+            children: [
+              const Icon(Icons.pin_rounded, color: AppColors.primaryMaroon),
+              const SizedBox(width: 10),
+              Text(
+                user.passcode != null && user.passcode!.isNotEmpty ? 'Change Security PIN' : 'Create Security PIN',
+                style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16),
+              ),
+            ],
+          ),
+          content: Form(
+            key: formKey,
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                const Text(
+                  'Set a 4-digit security PIN to quickly lock and unlock your account on this device.',
+                  style: TextStyle(fontSize: 12, color: Colors.grey),
+                ),
+                const SizedBox(height: 16),
+                TextFormField(
+                  controller: pinController,
+                  obscureText: obscure,
+                  keyboardType: TextInputType.number,
+                  inputFormatters: [
+                    FilteringTextInputFormatter.digitsOnly,
+                    LengthLimitingTextInputFormatter(4),
+                  ],
+                  decoration: InputDecoration(
+                    labelText: 'New 4-Digit PIN',
+                    prefixIcon: const Icon(Icons.lock_outline),
+                    suffixIcon: IconButton(
+                      icon: Icon(obscure ? Icons.visibility_off : Icons.visibility),
+                      onPressed: () => setDialogState(() => obscure = !obscure),
+                    ),
+                    border: const OutlineInputBorder(),
+                  ),
+                  validator: (v) {
+                    if (v == null || v.isEmpty) return 'Please enter a 4-digit PIN';
+                    if (v.length != 4) return 'PIN must be exactly 4 digits';
+                    return null;
+                  },
+                ),
+                const SizedBox(height: 14),
+                TextFormField(
+                  controller: confirmPinController,
+                  obscureText: obscure,
+                  keyboardType: TextInputType.number,
+                  inputFormatters: [
+                    FilteringTextInputFormatter.digitsOnly,
+                    LengthLimitingTextInputFormatter(4),
+                  ],
+                  decoration: const InputDecoration(
+                    labelText: 'Confirm 4-Digit PIN',
+                    prefixIcon: Icon(Icons.lock_outline),
+                    border: OutlineInputBorder(),
+                  ),
+                  validator: (v) {
+                    if (v != pinController.text) return 'PINs do not match';
+                    return null;
+                  },
+                ),
+              ],
+            ),
+          ),
+          actions: [
+            TextButton(
+              onPressed: isSaving ? null : () => Navigator.pop(context),
+              child: const Text('CANCEL'),
+            ),
+            ElevatedButton(
+              onPressed: isSaving
+                  ? null
+                  : () async {
+                      if (formKey.currentState!.validate()) {
+                        setDialogState(() => isSaving = true);
+                        try {
+                          await ref.read(userProvider.notifier).updatePasscode(
+                            user.id,
+                            pinController.text.trim(),
+                            lockAfterUpdate: false,
+                          );
+                          if (context.mounted) {
+                            Navigator.pop(context);
+                            ScaffoldMessenger.of(context).showSnackBar(
+                              const SnackBar(
+                                content: Text('4-Digit Security PIN configured and enabled!'),
+                                backgroundColor: Colors.green,
+                              ),
+                            );
+                          }
+                        } catch (e) {
+                          if (context.mounted) {
+                            ScaffoldMessenger.of(context).showSnackBar(
+                              SnackBar(content: Text('Error saving PIN: $e'), backgroundColor: Colors.red),
+                            );
+                          }
+                        } finally {
+                          setDialogState(() => isSaving = false);
+                        }
+                      }
+                    },
+              style: ElevatedButton.styleFrom(
+                backgroundColor: AppColors.primaryMaroon,
+                foregroundColor: Colors.white,
+              ),
+              child: Text(isSaving ? 'SAVING...' : 'SAVE PIN'),
+            ),
+          ],
+        ),
       ),
     );
   }

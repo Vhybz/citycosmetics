@@ -134,11 +134,25 @@ class SaleRecord {
       cashierId: map['cashier_id'],
       customerName: map['customer_name'],
       customerPhone: map['customer_phone'],
-      status: SaleStatus.values.byName(map['status'] ?? 'completed'),
+      status: _parseSaleStatus(map['status']),
       correctionReason: map['correction_reason'],
       bankReceiptUrl: map['bank_receipt_url'],
       bankReceiptId: map['bank_receipt_id'],
       isVerified: map['is_verified'] ?? false,
+    );
+  }
+
+  static SaleStatus _parseSaleStatus(dynamic raw) {
+    if (raw == null) return SaleStatus.completed;
+    final str = raw.toString().trim().toLowerCase();
+    if (str == 'reversed') return SaleStatus.reversed;
+    if (str == 'cancelled' || str == 'canceled') return SaleStatus.cancelled;
+    if (str == 'pendingcorrection') return SaleStatus.pendingCorrection;
+    if (str == 'rectified') return SaleStatus.rectified;
+    if (str == 'awaitingdeposit') return SaleStatus.awaitingDeposit;
+    return SaleStatus.values.firstWhere(
+      (e) => e.name.toLowerCase() == str,
+      orElse: () => SaleStatus.completed,
     );
   }
 

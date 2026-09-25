@@ -13,6 +13,7 @@ import 'ai_chatbot_sheet.dart';
 import '../services/transfer_provider.dart';
 import '../services/branch_provider.dart';
 import '../services/sync_provider.dart';
+import 'staff_switch_sheet.dart';
 import 'package:connectivity_plus/connectivity_plus.dart';
 
 class MainAppBar extends ConsumerStatefulWidget implements PreferredSizeWidget {
@@ -156,32 +157,48 @@ class _MainAppBarState extends ConsumerState<MainAppBar> with SingleTickerProvid
                 ),
 
                 // 3. Right Actions (Critical Apps)
-                const SizedBox(width: 4),
+                SizedBox(width: isMobile ? 2 : 4),
                 _buildRoundButton(
                   context, 
-                  Icons.lock_outline_rounded, 
+                  Icons.switch_account_rounded, 
                   () {
-                    HapticFeedback.mediumImpact();
-                    ref.read(passcodeUnlockedProvider.notifier).state = false;
+                    HapticFeedback.lightImpact();
+                    StaffSwitchSheet.show(context);
                   },
-                  size: isMobile ? 36 : 42,
-                  iconSize: isMobile ? 18 : 20,
-                  tooltip: 'Lock System',
+                  size: isMobile ? 32 : 42,
+                  iconSize: isMobile ? 16 : 20,
+                  tooltip: 'Switch User / Staff Handover',
                 ),
-                const SizedBox(width: 4),
+                if (user?.isPasscodeEnabled == true && user?.passcode != null && user!.passcode!.isNotEmpty) ...[
+                  SizedBox(width: isMobile ? 2 : 4),
+                  _buildRoundButton(
+                    context, 
+                    Icons.lock_outline_rounded, 
+                    () {
+                      HapticFeedback.mediumImpact();
+                      ref.read(passcodeUnlockedProvider.notifier).state = false;
+                    },
+                    size: isMobile ? 32 : 42,
+                    iconSize: isMobile ? 16 : 20,
+                    tooltip: 'Lock System',
+                  ),
+                ],
+                SizedBox(width: isMobile ? 2 : 4),
                 _buildRoundButton(
                   context, 
                   Icons.calculate_outlined, 
                   () => showDialog(context: context, builder: (context) => const CalculatorDialog()),
-                  size: isMobile ? 36 : 42,
-                  iconSize: isMobile ? 18 : 20,
+                  size: isMobile ? 32 : 42,
+                  iconSize: isMobile ? 16 : 20,
                   tooltip: 'Quick Calculator',
                 ),
-                const SizedBox(width: 4),
-                if (widget.actions != null) ...widget.actions!,
-                const SizedBox(width: 4),
+                if (widget.actions != null) ...[
+                  SizedBox(width: isMobile ? 2 : 4),
+                  ...widget.actions!,
+                ],
+                SizedBox(width: isMobile ? 2 : 4),
                 _buildNotificationButton(context, unreadCount, () => _showNotificationsDialog(context, ref, notifications), isMobile),
-                const SizedBox(width: 4),
+                SizedBox(width: isMobile ? 2 : 4),
                 _buildProfileAvatar(context, ref, roleColor, isMobile),
               ],
             ),
@@ -219,7 +236,7 @@ class _MainAppBarState extends ConsumerState<MainAppBar> with SingleTickerProvid
               ),
             ),
             const SizedBox(width: 6),
-            _buildLiveIndicator(ref),
+            _buildCloudSyncIndicator(context, ref, isMobile),
           ],
         ),
         Text(
@@ -273,39 +290,239 @@ class _MainAppBarState extends ConsumerState<MainAppBar> with SingleTickerProvid
     );
   }
 
-  Widget _buildLiveIndicator(WidgetRef ref) {
+  Widget _buildCloudSyncIndicator(BuildContext context, WidgetRef ref, bool isMobile) {
+    final syncState = ref.watch(syncProvider);
     final connectivity = ref.watch(connectivityStatusProvider);
-    
-    return connectivity.when(
-      data: (results) {
-        final isOffline = results.every((result) => result == ConnectivityResult.none);
-        final color = isOffline ? Colors.red : Colors.green;
-        final text = isOffline ? 'OFFLINE' : 'LIVE';
-        final iconColor = isOffline ? Colors.red : Colors.green;
 
-        return Container(
-          padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+    final bool hasInternet = syncState.isConnected && 
+        !(connectivity.valueOrNull?.every((result) => result == ConnectivityResult.none) ?? false);
+    final bool isSyncing = syncState.isSyncing;
+
+    // Strict 3-state Color mapping:
+    // 1. Red when no internet
+    // 2. Orange when syncing
+    // 3. Green when there is internet and complete sync
+    final Color color;
+    final IconData icon;
+    final String text;
+    final String tooltip;
+
+    if (!hasInternet) {
+      color = const Color(0xFFFF3B30); // Red
+      icon = Icons.cloud_off_rounded;
+      text = 'NO INTERNET';
+      tooltip = 'No Internet Connection (${syncState.pendingCount} queued) • Tap for details';
+    } else if (isSyncing) {
+      color = const Color(0xFFFF9500); // Orange
+      icon = Icons.cloud_sync_rounded;
+      text = 'SYNCING';
+      tooltip = 'Synchronizing with Supabase Cloud...';
+    } else {
+      color = const Color(0xFF34C759); // Green
+      icon = Icons.cloud_done_rounded;
+      text = 'SYNCED';
+      tooltip = 'Internet Connected & Complete Cloud Sync • Tap for details';
+    }
+
+    return Tooltip(
+      message: tooltip,
+      child: InkWell(
+        onTap: () {
+          HapticFeedback.lightImpact();
+          _showCloudSyncConfirmationDialog(context, ref);
+        },
+        borderRadius: BorderRadius.circular(12),
+        child: Container(
+          padding: EdgeInsets.symmetric(horizontal: isMobile ? 6 : 6, vertical: isMobile ? 3.5 : 2.5),
           decoration: BoxDecoration(
-            color: Colors.white.withValues(alpha: 0.15),
-            borderRadius: BorderRadius.circular(12),
-            border: Border.all(color: color.withValues(alpha: 0.5)),
+            color: color.withValues(alpha: 0.18),
+            borderRadius: BorderRadius.circular(10),
+            border: Border.all(color: color.withValues(alpha: 0.65), width: 1.2),
           ),
           child: Row(
             mainAxisSize: MainAxisSize.min,
             children: [
-              Container(
-                width: 5,
-                height: 5,
-                decoration: BoxDecoration(color: iconColor, shape: BoxShape.circle),
-              ),
-              const SizedBox(width: 4),
-              Text(text, style: const TextStyle(color: Colors.white, fontSize: 7, fontWeight: FontWeight.bold)),
+              if (isSyncing)
+                RotationTransition(
+                  turns: _pulseController,
+                  child: Icon(icon, size: isMobile ? 13 : 14, color: color),
+                )
+              else
+                Icon(icon, size: isMobile ? 13 : 14, color: color),
+              if (!isMobile) ...[
+                const SizedBox(width: 4),
+                Text(
+                  text,
+                  style: TextStyle(
+                    color: color,
+                    fontSize: 7.5,
+                    fontWeight: FontWeight.w800,
+                    letterSpacing: 0.3,
+                  ),
+                ),
+              ],
             ],
           ),
+        ),
+      ),
+    );
+  }
+
+  void _showCloudSyncConfirmationDialog(BuildContext context, WidgetRef ref) {
+    showDialog(
+      context: context,
+      builder: (dialogContext) {
+        return Consumer(
+          builder: (context, ref, _) {
+            final syncState = ref.watch(syncProvider);
+            final connectivity = ref.watch(connectivityStatusProvider);
+            final bool hasInternet = syncState.isConnected &&
+                !(connectivity.valueOrNull?.every((r) => r == ConnectivityResult.none) ?? false);
+            final bool isSyncing = syncState.isSyncing;
+            final theme = Theme.of(context);
+
+            final Color statusColor = !hasInternet
+                ? const Color(0xFFFF3B30) // Red
+                : (isSyncing ? const Color(0xFFFF9500) : const Color(0xFF34C759)); // Orange / Green
+
+            final IconData statusIcon = !hasInternet
+                ? Icons.cloud_off_rounded
+                : (isSyncing ? Icons.cloud_sync_rounded : Icons.cloud_done_rounded);
+
+            final String statusDescription = !hasInternet
+                ? 'No Internet: System operating offline. All actions will automatically push once reconnected.'
+                : (isSyncing
+                    ? 'Syncing In Progress: Data is uploading/downloading with Supabase Cloud.'
+                    : 'Complete Sync: Internet active and cloud data fully synchronized.');
+
+            return AlertDialog(
+              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(AppRadius.m)),
+              title: Row(
+                children: [
+                  Container(
+                    padding: const EdgeInsets.all(8),
+                    decoration: BoxDecoration(
+                      color: statusColor.withValues(alpha: 0.15),
+                      shape: BoxShape.circle,
+                    ),
+                    child: Icon(
+                      statusIcon,
+                      color: statusColor,
+                      size: 26,
+                    ),
+                  ),
+                  const SizedBox(width: 12),
+                  const Expanded(
+                    child: Text(
+                      'Cloud Synchronization',
+                      style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
+                    ),
+                  ),
+                ],
+              ),
+              content: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Container(
+                    padding: const EdgeInsets.all(12),
+                    decoration: BoxDecoration(
+                      color: theme.colorScheme.surfaceContainerHighest.withValues(alpha: 0.5),
+                      borderRadius: BorderRadius.circular(AppRadius.s),
+                      border: Border.all(
+                        color: statusColor.withValues(alpha: 0.4),
+                      ),
+                    ),
+                    child: Row(
+                      children: [
+                        Icon(
+                          !hasInternet ? Icons.wifi_off_rounded : (isSyncing ? Icons.sync_rounded : Icons.check_circle_outline),
+                          color: statusColor,
+                          size: 20,
+                        ),
+                        const SizedBox(width: 10),
+                        Expanded(
+                          child: Text(
+                            statusDescription,
+                            style: const TextStyle(fontSize: 12),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                  const SizedBox(height: 14),
+                  _buildSyncDetailRow('Backend Server', 'Supabase Cloud (PostgreSQL)'),
+                  const SizedBox(height: 8),
+                  _buildSyncDetailRow(
+                    'Connection Status',
+                    !hasInternet ? 'No Internet (Red)' : (isSyncing ? 'Syncing (Orange)' : 'Connected & Synced (Green)'),
+                    color: statusColor,
+                  ),
+                  const SizedBox(height: 8),
+                  _buildSyncDetailRow(
+                    'Last Synchronized',
+                    DateFormat('MMM dd, yyyy • hh:mm:ss a').format(syncState.lastSynced),
+                  ),
+                  const SizedBox(height: 8),
+                  _buildSyncDetailRow(
+                    'Pending Offline Queue',
+                    '${syncState.pendingCount} item(s)',
+                    color: syncState.pendingCount > 0 ? Colors.orange : Colors.grey,
+                  ),
+                ],
+              ),
+              actions: [
+                TextButton(
+                  onPressed: () => Navigator.pop(dialogContext),
+                  child: const Text('Close'),
+                ),
+                FilledButton.icon(
+                  onPressed: syncState.isSyncing
+                      ? null
+                      : () async {
+                          HapticFeedback.mediumImpact();
+                          await ref.read(syncProvider.notifier).syncAll();
+                          if (dialogContext.mounted) {
+                            ScaffoldMessenger.of(context).showSnackBar(
+                              const SnackBar(
+                                content: Text('☁️ Cloud synchronization refreshed successfully!'),
+                                duration: Duration(seconds: 2),
+                                behavior: SnackBarBehavior.floating,
+                              ),
+                            );
+                          }
+                        },
+                  icon: syncState.isSyncing
+                      ? const SizedBox(
+                          width: 16,
+                          height: 16,
+                          child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white),
+                        )
+                      : const Icon(Icons.sync_rounded, size: 18),
+                  label: Text(syncState.isSyncing ? 'Syncing...' : 'Sync Now'),
+                ),
+              ],
+            );
+          },
         );
       },
-      loading: () => const SizedBox.shrink(),
-      error: (_, _) => const Icon(Icons.sync_problem, size: 12, color: Colors.white),
+    );
+  }
+
+  Widget _buildSyncDetailRow(String label, String value, {Color? color}) {
+    return Row(
+      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+      children: [
+        Text(label, style: const TextStyle(fontSize: 12, color: Colors.grey)),
+        Text(
+          value,
+          style: TextStyle(
+            fontSize: 12,
+            fontWeight: FontWeight.bold,
+            color: color,
+          ),
+        ),
+      ],
     );
   }
 
@@ -322,8 +539,8 @@ class _MainAppBarState extends ConsumerState<MainAppBar> with SingleTickerProvid
           context, 
           Icons.notifications_none_rounded, 
           onTap,
-          size: isMobile ? 36 : 42,
-          iconSize: isMobile ? 18 : 20,
+          size: isMobile ? 32 : 42,
+          iconSize: isMobile ? 16 : 20,
         ),
         if (count > 0)
           Positioned(
@@ -346,7 +563,7 @@ class _MainAppBarState extends ConsumerState<MainAppBar> with SingleTickerProvid
 
   Widget _buildProfileAvatar(BuildContext context, WidgetRef ref, Color roleColor, bool isMobile) {
     final user = ref.watch(currentUserProvider);
-    final size = isMobile ? 32.0 : 38.0;
+    final size = isMobile ? 30.0 : 38.0;
 
     return InkWell(
       onTap: () => widget.onProfileTap != null ? widget.onProfileTap!() : Navigator.pushNamed(context, '/profile'),

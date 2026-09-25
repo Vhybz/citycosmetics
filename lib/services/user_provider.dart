@@ -2,6 +2,8 @@ import 'dart:async';
 import 'package:flutter/foundation.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:connectivity_plus/connectivity_plus.dart';
+import 'package:hive_flutter/hive_flutter.dart';
+import 'offline_sync_service.dart';
 import '../models/user_model.dart';
 import 'supabase_user_service.dart';
 import 'sms_service.dart';
@@ -26,11 +28,23 @@ class UserNotifier extends StateNotifier<List<UserAccount>> {
     _subscription?.cancel();
     _subscription = service.watchUsers().listen(
       (users) {
+        final mappedUsers = users.map((u) {
+          try {
+            if (Hive.isBoxOpen(OfflineSyncService.settingsBoxName)) {
+              final localVal = Hive.box(OfflineSyncService.settingsBoxName).get('passcode_enabled_${u.id}');
+              if (localVal != null) {
+                return u.copyWith(isPasscodeEnabled: localVal == true);
+              }
+            }
+          } catch (_) {}
+          return u;
+        }).toList();
+
         final currentUser = ref.read(sessionUserProfileProvider);
-        List<UserAccount> filteredUsers = users;
+        List<UserAccount> filteredUsers = mappedUsers;
         
         if (currentUser?.role != UserRole.superAdmin && currentUser?.branchCode != null) {
-          filteredUsers = users.where((u) => u.branchCode == currentUser!.branchCode).toList();
+          filteredUsers = mappedUsers.where((u) => u.branchCode == currentUser!.branchCode).toList();
         }
         
         state = filteredUsers;
@@ -39,10 +53,10 @@ class UserNotifier extends StateNotifier<List<UserAccount>> {
         final currentId = ref.read(currentUserIdProvider);
         if (currentId != null) {
           final oldMe = ref.read(sessionUserProfileProvider);
-          final me = users.where((u) => u.id == currentId).firstOrNull;
+          final me = mappedUsers.where((u) => u.id == currentId).firstOrNull;
           if (me != null) {
-            // SECURITY: If passcode changed remotely (e.g. by admin), lock the account immediately
-            if (oldMe != null && (me.passcode != oldMe.passcode || me.passcodeSentAt != oldMe.passcodeSentAt)) {
+            // SECURITY: If passcode changed remotely (e.g. by admin), lock the account immediately if enabled
+            if (me.isPasscodeEnabled && oldMe != null && (me.passcode != oldMe.passcode || me.passcodeSentAt != oldMe.passcodeSentAt)) {
               ref.read(passcodeUnlockedProvider.notifier).state = false;
             }
             ref.read(sessionUserProfileProvider.notifier).state = me;
@@ -111,17 +125,38 @@ class UserNotifier extends StateNotifier<List<UserAccount>> {
       final currentId = ref.read(currentUserIdProvider);
       if (currentId == null) return;
 
-      final currentUser = await service.getUserById(currentId);
+      UserAccount? currentUser = await service.getUserById(currentId);
+      if (currentUser != null) {
+        try {
+          if (Hive.isBoxOpen(OfflineSyncService.settingsBoxName)) {
+            final localVal = Hive.box(OfflineSyncService.settingsBoxName).get('passcode_enabled_${currentUser.id}');
+            if (localVal != null) {
+              currentUser = currentUser.copyWith(isPasscodeEnabled: localVal == true);
+            }
+          }
+        } catch (_) {}
+      }
       
       // Update session profile only if it changed to avoid unnecessary rebuilds
       if (currentUser != null) {
         final existing = ref.read(sessionUserProfileProvider);
-        if (existing == null || existing.id != currentUser.id || existing.lastSeen != currentUser.lastSeen) {
+        if (existing == null || existing.id != currentUser.id || existing.lastSeen != currentUser.lastSeen || existing.isPasscodeEnabled != currentUser.isPasscodeEnabled) {
           ref.read(sessionUserProfileProvider.notifier).state = currentUser;
         }
       }
 
-      final allUsers = await service.getUsers();
+      final rawUsers = await service.getUsers();
+      final allUsers = rawUsers.map((u) {
+        try {
+          if (Hive.isBoxOpen(OfflineSyncService.settingsBoxName)) {
+            final localVal = Hive.box(OfflineSyncService.settingsBoxName).get('passcode_enabled_${u.id}');
+            if (localVal != null) {
+              return u.copyWith(isPasscodeEnabled: localVal == true);
+            }
+          }
+        } catch (_) {}
+        return u;
+      }).toList();
       List<UserAccount> filteredUsers = allUsers;
       
       if (currentUser?.role != UserRole.superAdmin && currentUser?.branchCode != null) {
@@ -431,23 +466,75 @@ class UserNotifier extends StateNotifier<List<UserAccount>> {
     }
   }
 
-  Future<void> updatePasscode(String userId, String passcode) async {
+  Future<void> setPasscodeEnabled(String userId, bool enabled) async {
     try {
+      // 1. Cache to Hive locally
+      try {
+        if (Hive.isBoxOpen(OfflineSyncService.settingsBoxName)) {
+          await Hive.box(OfflineSyncService.settingsBoxName).put('passcode_enabled_$userId', enabled);
+        }
+      } catch (e) {
+        debugPrint('Hive save error for passcode_enabled: $e');
+      }
+
+      // 2. Update local state and session
+      final user = await _getUser(userId);
+      if (user != null) {
+        final updatedUser = user.copyWith(isPasscodeEnabled: enabled);
+        if (!enabled && userId == ref.read(currentUserIdProvider)) {
+          ref.read(passcodeUnlockedProvider.notifier).state = true;
+        }
+        _updateLocalAndSession(updatedUser);
+
+        // 3. Persist to Supabase if supported
+        try {
+          await service.updateUserFields(userId, {'is_passcode_enabled': enabled});
+        } catch (dbError) {
+          debugPrint('Supabase updateUserFields is_passcode_enabled: $dbError');
+        }
+      }
+    } catch (e) {
+      debugPrint('Set Passcode Enabled Error: $e');
+      rethrow;
+    }
+  }
+
+  Future<void> updatePasscode(String userId, String passcode, {bool lockAfterUpdate = false}) async {
+    try {
+      try {
+        if (Hive.isBoxOpen(OfflineSyncService.settingsBoxName)) {
+          await Hive.box(OfflineSyncService.settingsBoxName).put('passcode_enabled_$userId', true);
+        }
+      } catch (_) {}
+
       final user = await _getUser(userId);
       if (user != null) {
         final now = DateTime.now();
-        final updatedUser = user.copyWith(passcode: passcode, passcodeSentAt: now);
+        final updatedUser = user.copyWith(
+          passcode: passcode, 
+          passcodeSentAt: now,
+          isPasscodeEnabled: true,
+        );
         
-        // SECURITY: If updating current user's PIN, lock immediately
-        if (userId == ref.read(currentUserIdProvider)) {
+        // SECURITY: Only lock if explicitly requested
+        if (lockAfterUpdate && userId == ref.read(currentUserIdProvider)) {
           ref.read(passcodeUnlockedProvider.notifier).state = false;
         }
 
         _updateLocalAndSession(updatedUser);
-        await service.updateUserFields(userId, {
-          'passcode': passcode,
-          'passcode_sent_at': now.toIso8601String(),
-        });
+        try {
+          await service.updateUserFields(userId, {
+            'passcode': passcode,
+            'passcode_sent_at': now.toIso8601String(),
+            'is_passcode_enabled': true,
+          });
+        } catch (dbError) {
+          debugPrint('Supabase updatePasscode is_passcode_enabled failed ($dbError), trying passcode only');
+          await service.updateUserFields(userId, {
+            'passcode': passcode,
+            'passcode_sent_at': now.toIso8601String(),
+          }).catchError((_) {});
+        }
       }
     } catch (e) {
       debugPrint('Update Passcode Error: $e');

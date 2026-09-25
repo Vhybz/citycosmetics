@@ -15,6 +15,7 @@ class ReportService {
   static Future<void> generateDailySalesReport(List<SaleRecord> sales, DateTime date) async {
     final doc = pw.Document();
     final todaySales = sales.where((s) => 
+      s.isActive &&
       s.timestamp.year == date.year && 
       s.timestamp.month == date.month && 
       s.timestamp.day == date.day
@@ -56,6 +57,7 @@ class ReportService {
   static Future<void> generateMonthlyRevenueSummary(List<SaleRecord> sales, DateTime date) async {
     final doc = pw.Document();
     final monthlySales = sales.where((s) => 
+      s.isActive &&
       s.timestamp.year == date.year && 
       s.timestamp.month == date.month
     ).toList();
@@ -192,7 +194,7 @@ class ReportService {
 
   static Future<void> generateCustomerDebtStatement(List<SaleRecord> sales) async {
     final doc = pw.Document();
-    final debtSales = sales.where((s) => s.balance > 0).toList();
+    final debtSales = sales.where((s) => s.isActive && s.balance > 0).toList();
     final totalDebt = debtSales.fold(0.0, (sum, s) => sum + s.balance);
 
     doc.addPage(
@@ -259,6 +261,7 @@ class ReportService {
     
     final Map<String, Map<String, dynamic>> performance = {};
     for (final s in sales) {
+      if (!s.isActive) continue;
       final name = s.cashierName;
       performance.putIfAbsent(name, () => {'total': 0.0, 'count': 0});
       performance[name]!['total'] += s.totalAmount;
@@ -573,6 +576,7 @@ class ReportService {
   static Map<String, Map<String, dynamic>> _groupSalesByDay(List<SaleRecord> sales) {
     final Map<String, Map<String, dynamic>> groups = {};
     for (final s in sales) {
+      if (!s.isActive) continue;
       final day = DateFormat('yyyy-MM-dd').format(s.timestamp);
       groups[day] = groups[day] ?? {'count': 0, 'total': 0.0};
       groups[day]!['count'] += 1;

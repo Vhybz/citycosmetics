@@ -335,6 +335,17 @@ class SaleHistoryNotifier extends StateNotifier<List<SaleRecord>> {
       ];
       _saveToCache(state);
 
+      // 5. Deduct Loyalty Points if customer exists
+      if (sale.customerPhone != null) {
+        try {
+          final customers = ref.read(customerProvider);
+          final customer = customers.where((c) => c.phone == sale.customerPhone).firstOrNull;
+          if (customer != null) {
+            await ref.read(customerProvider.notifier).deductLoyaltyPoints(customer.id, sale.totalAmount);
+          }
+        } catch (_) {}
+      }
+
     } catch (e) {
       debugPrint('Reverse Sale Error: $e');
       rethrow;

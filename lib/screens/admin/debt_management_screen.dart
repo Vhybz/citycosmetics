@@ -17,6 +17,7 @@ import 'package:flutter/services.dart';
 import '../../widgets/responsive_layout.dart';
 import '../../widgets/app_sidebar.dart';
 import '../../widgets/role_pop_scope.dart';
+import '../../widgets/phone_prompt_dialog.dart';
 
 class DebtManagementScreen extends ConsumerStatefulWidget {
   const DebtManagementScreen({super.key});
@@ -39,7 +40,7 @@ class _DebtManagementScreenState extends ConsumerState<DebtManagementScreen> {
     
     // Filter logic
     final filteredSales = salesHistory.where((s) {
-      if (s.status == SaleStatus.cancelled) return false;
+      if (!s.isActive) return false;
       
       final isDebt = s.balance > 0.01;
       
@@ -72,14 +73,14 @@ class _DebtManagementScreenState extends ConsumerState<DebtManagementScreen> {
     final Map<String, double> debtorBalances = {};
     final Map<String, String> debtorNames = {};
     for (var s in salesHistory) {
-      if (s.status == SaleStatus.cancelled || s.balance <= 0.01 || s.customerPhone == null) continue;
+      if (!s.isActive || s.balance <= 0.01 || s.customerPhone == null) continue;
       debtorBalances[s.customerPhone!] = (debtorBalances[s.customerPhone!] ?? 0) + s.balance;
       debtorNames[s.customerPhone!] = s.customerName ?? 'Unknown';
     }
     final debtors = debtorBalances.entries.toList()..sort((a, b) => b.value.compareTo(a.value));
 
     final totalDebt = salesHistory
-        .where((s) => s.status != SaleStatus.cancelled)
+        .where((s) => s.isActive)
         .fold(0.0, (sum, s) => sum + (s.balance > 0.01 ? s.balance : 0));
     final isDesktop = ResponsiveLayout.isDesktop(context);
     const currentRoute = '/admin/debts';
@@ -240,7 +241,7 @@ class _DebtManagementScreenState extends ConsumerState<DebtManagementScreen> {
               checkmarkColor: theme.colorScheme.primary,
             ),
             if (isSmall) 
-              Text('${ref.watch(saleHistoryProvider).where((s) => s.balance > 0).length} records', 
+              Text('${ref.watch(saleHistoryProvider).where((s) => s.isActive && s.balance > 0).length} records', 
                 style: TextStyle(fontSize: 10, color: theme.colorScheme.onSurfaceVariant)),
           ],
         ),
@@ -289,12 +290,13 @@ class _DebtManagementScreenState extends ConsumerState<DebtManagementScreen> {
                   onPressed: () {
                     if (_showPaidInvoices) {
                       final clearedDebts = salesHistory.where((s) => 
+                        s.isActive &&
                         s.balance <= 0.01 && 
                         (s.payments.length > 1 || s.payments.any((p) => p.reference?.contains('Collection') ?? false))
                       ).toList();
                       ReceiptService.printPaidInvoicesReport(clearedDebts);
                     } else {
-                      ReceiptService.printDebtReport(salesHistory.where((s) => s.balance > 0).toList());
+                      ReceiptService.printDebtReport(salesHistory.where((s) => s.isActive && s.balance > 0).toList());
                     }
                   },
                   icon: const Icon(Icons.picture_as_pdf),
@@ -316,12 +318,13 @@ class _DebtManagementScreenState extends ConsumerState<DebtManagementScreen> {
                 onPressed: () {
                   if (_showPaidInvoices) {
                     final clearedDebts = salesHistory.where((s) => 
+                      s.isActive &&
                       s.balance <= 0.01 && 
                       (s.payments.length > 1 || s.payments.any((p) => p.reference?.contains('Collection') ?? false))
                     ).toList();
                     ReceiptService.printPaidInvoicesReport(clearedDebts);
                   } else {
-                    ReceiptService.printDebtReport(salesHistory.where((s) => s.balance > 0).toList());
+                    ReceiptService.printDebtReport(salesHistory.where((s) => s.isActive && s.balance > 0).toList());
                   }
                 },
                 icon: const Icon(Icons.picture_as_pdf),
@@ -476,29 +479,82 @@ class _DebtManagementScreenState extends ConsumerState<DebtManagementScreen> {
               Text('Phone: ${sale.customerPhone}', style: const TextStyle(fontSize: 11)),
           ],
         ),
-        trailing: SizedBox(
-          width: 80,
-          child: Column(
-            mainAxisAlignment: MainAxisAlignment.center,
-            crossAxisAlignment: CrossAxisAlignment.end,
-            children: [
-              Text(isPaid ? 'Fully Paid' : 'Balance Due', 
-                style: TextStyle(fontSize: 9, color: isPaid ? Colors.green : theme.colorScheme.onSurfaceVariant),
-                textAlign: TextAlign.right,
+        trailing: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            if (!isPaid)
+              IconButton(
+                icon: const Icon(Icons.sms_outlined, color: Colors.orange, size: 20),
+                tooltip: 'Send Debt Reminder SMS',
+                onPressed: () => _sendDebtReminder(sale),
               ),
-              FittedBox(
-                fit: BoxFit.scaleDown,
-                child: Text(
-                  '₵${sale.balance.toStringAsFixed(2)}',
-                  style: TextStyle(color: isPaid ? Colors.green : Colors.red, fontWeight: FontWeight.bold, fontSize: 14),
-                ),
+            SizedBox(
+              width: 80,
+              child: Column(
+                mainAxisAlignment: MainAxisAlignment.center,
+                crossAxisAlignment: CrossAxisAlignment.end,
+                children: [
+                  Text(isPaid ? 'Fully Paid' : 'Balance Due', 
+                    style: TextStyle(fontSize: 9, color: isPaid ? Colors.green : theme.colorScheme.onSurfaceVariant),
+                    textAlign: TextAlign.right,
+                  ),
+                  FittedBox(
+                    fit: BoxFit.scaleDown,
+                    child: Text(
+                      '₵${sale.balance.toStringAsFixed(2)}',
+                      style: TextStyle(color: isPaid ? Colors.green : Colors.red, fontWeight: FontWeight.bold, fontSize: 14),
+                    ),
+                  ),
+                ],
               ),
-            ],
-          ),
+            ),
+          ],
         ),
         onTap: () => _showCollectionDialog(context, sale),
       ),
     );
+  }
+
+  Future<void> _sendDebtReminder(SaleRecord sale) async {
+    final currentBranch = ref.read(currentBranchProvider);
+    final String? branchName = currentBranch != null 
+        ? '${currentBranch.name} (${currentBranch.location})' 
+        : null;
+
+    String? targetPhone = sale.customerPhone;
+    if (targetPhone == null || targetPhone.trim().isEmpty) {
+      targetPhone = await PhonePromptDialog.show(context);
+    }
+
+    if (targetPhone != null && targetPhone.trim().isNotEmpty) {
+      if (!mounted) return;
+      final messenger = ScaffoldMessenger.of(context);
+      messenger.showSnackBar(
+        const SnackBar(
+          content: Text('Sending debt reminder SMS...'),
+          duration: Duration(seconds: 1),
+          behavior: SnackBarBehavior.floating,
+        ),
+      );
+
+      final success = await SmsService.sendDebtReminderSms(
+        sale, 
+        branchName: branchName,
+        customPhone: targetPhone,
+      );
+
+      if (!mounted) return;
+      messenger.hideCurrentSnackBar();
+      messenger.showSnackBar(
+        SnackBar(
+          content: Text(success 
+              ? 'Debt reminder sent successfully to $targetPhone!' 
+              : 'Failed to send SMS reminder. Check network or SMS balance.'),
+          backgroundColor: success ? Colors.green : Colors.red,
+          behavior: SnackBarBehavior.floating,
+        ),
+      );
+    }
   }
 
   Widget _buildEmptyState(BuildContext context) {
@@ -565,19 +621,9 @@ class _DebtManagementScreenState extends ConsumerState<DebtManagementScreen> {
                             ],
                           ),
                         ),
-                        if (sale.customerPhone != null && !isPaid)
+                        if (!isPaid)
                           IconButton.filledTonal(
-                            onPressed: () {
-                              final currentBranch = ref.read(currentBranchProvider);
-                              final String? branchName = currentBranch != null 
-                                  ? '${currentBranch.name} (${currentBranch.location})' 
-                                  : null;
-                              
-                              SmsService.sendDebtReminderSms(sale, branchName: branchName);
-                              ScaffoldMessenger.of(context).showSnackBar(
-                                const SnackBar(content: Text('Reminder sent to customer!'))
-                              );
-                            },
+                            onPressed: () => _sendDebtReminder(sale),
                             icon: const Icon(Icons.sms_outlined),
                             tooltip: 'Send SMS Reminder',
                           ),

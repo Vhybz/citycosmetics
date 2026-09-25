@@ -207,7 +207,7 @@ class _ProductActivityReportScreenState extends ConsumerState<ProductActivityRep
     final endOfPeriod = DateTime(_endDate.year, _endDate.month, _endDate.day, 23, 59, 59);
 
     final periodSales = sales.where((s) =>
-        s.status == SaleStatus.completed &&
+        s.isActive &&
         s.timestamp.isAfter(startOfPeriod.subtract(const Duration(seconds: 1))) &&
         s.timestamp.isBefore(endOfPeriod.add(const Duration(seconds: 1)))
     ).toList();

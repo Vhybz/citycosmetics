@@ -17,9 +17,9 @@ import '../../models/user_model.dart';
 import '../../services/transfer_provider.dart';
 import '../../widgets/passcode_guard.dart';
 
+import '../../services/customer_provider.dart';
 import '../../services/product_seeder.dart';
 import '../../models/butcher_models.dart';
-
 import '../../widgets/role_pop_scope.dart';
 
 class InventoryControlScreen extends ConsumerStatefulWidget {
@@ -406,6 +406,7 @@ class _InventoryControlScreenState extends ConsumerState<InventoryControlScreen>
     DateTime? endDate = initialProduct?.promoEndDate;
     PromoTarget selectedTarget = initialProduct?.promoTarget ?? PromoTarget.both;
     PromoCustomerTarget selectedCustomerTarget = initialProduct?.promoCustomerTarget ?? PromoCustomerTarget.all;
+    String? selectedCustomerId = initialProduct?.targetCustomerId;
     
     final selectedIds = <String>{};
     if (initialProduct != null) {
@@ -535,9 +536,33 @@ class _InventoryControlScreenState extends ConsumerState<InventoryControlScreen>
                         items: const [
                           DropdownMenuItem(value: PromoCustomerTarget.all, child: Text('All Customers (Public)', overflow: TextOverflow.ellipsis)),
                           DropdownMenuItem(value: PromoCustomerTarget.regularsOnly, child: Text('Regulars/Favorites Only', overflow: TextOverflow.ellipsis)),
+                          DropdownMenuItem(value: PromoCustomerTarget.specialOnly, child: Text('Special Customers (VIPs) Only', overflow: TextOverflow.ellipsis)),
+                          DropdownMenuItem(value: PromoCustomerTarget.specificPerson, child: Text('Specific Person (One Customer)', overflow: TextOverflow.ellipsis)),
                         ],
                         onChanged: (v) => setState(() => selectedCustomerTarget = v!),
                       ),
+                      if (selectedCustomerTarget == PromoCustomerTarget.specificPerson) ...[
+                        const SizedBox(height: AppSpacing.m),
+                        Builder(
+                          builder: (context) {
+                            final allCustomers = ref.watch(customerProvider);
+                            return DropdownButtonFormField<String>(
+                              initialValue: selectedCustomerId,
+                              isExpanded: true,
+                              decoration: const InputDecoration(
+                                labelText: 'Select Special Person / Customer',
+                                prefixIcon: Icon(Icons.person_pin_circle_rounded),
+                              ),
+                              items: allCustomers.map((c) => DropdownMenuItem<String>(
+                                value: c.id,
+                                child: Text('${c.name} (${c.phone})', overflow: TextOverflow.ellipsis),
+                              )).toList(),
+                              onChanged: (val) => setState(() => selectedCustomerId = val),
+                              validator: (val) => (selectedCustomerTarget == PromoCustomerTarget.specificPerson && (val == null || val.isEmpty)) ? 'Please select a customer' : null,
+                            );
+                          },
+                        ),
+                      ],
                       const SizedBox(height: AppSpacing.m),
                       InkWell(
                         onTap: () async {
@@ -662,108 +687,170 @@ class _InventoryControlScreenState extends ConsumerState<InventoryControlScreen>
                                   ),
                                 ),
                               )
-                            : ListView.builder(
+                            : ListView.separated(
+                                padding: const EdgeInsets.all(4),
                                 itemCount: filteredProducts.length,
+                                separatorBuilder: (_, _) => const SizedBox(height: 6),
                                 itemBuilder: (context, index) {
                                   final p = filteredProducts[index];
-                                  return CheckboxListTile(
-                                title: Text('${p.category} - ${p.name}', style: const TextStyle(fontSize: 13), maxLines: 1, overflow: TextOverflow.ellipsis),
-                                subtitle: Text('Current: ₵${p.retailPrice}', style: const TextStyle(fontSize: 10)),
-                                value: selectedIds.contains(p.id),
-                                onChanged: (val) {
-                                  setState(() {
-                                    if (val!) {
-                                      selectedIds.add(p.id);
-                                    } else {
-                                      selectedIds.remove(p.id);
-                                    }
-                                  });
-                                },
-                                secondary: SizedBox(
-                                  width: 220,
-                                  child: Row(
-                                    mainAxisAlignment: MainAxisAlignment.end,
-                                    children: [
-                                      Column(
-                                        mainAxisAlignment: MainAxisAlignment.center,
-                                        crossAxisAlignment: CrossAxisAlignment.end,
-                                        children: [
-                                          Text(
-                                            '₵${p.retailPrice.toStringAsFixed(2)}',
-                                            style: const TextStyle(
-                                              fontSize: 10, 
-                                              color: Colors.grey, 
-                                              decoration: TextDecoration.lineThrough,
-                                            ),
-                                          ),
-                                          const SizedBox(height: 2),
-                                          SizedBox(
-                                            width: 60,
-                                            height: 24,
-                                            child: TextField(
-                                              controller: customPercentageControllers[p.id],
-                                              decoration: const InputDecoration(
-                                                suffixText: '% off',
-                                                suffixStyle: TextStyle(fontSize: 10, color: Colors.green),
-                                                isDense: true,
-                                                contentPadding: EdgeInsets.zero,
-                                                border: InputBorder.none,
-                                              ),
-                                              style: const TextStyle(
-                                                fontSize: 10,
-                                                color: Colors.green,
-                                                fontWeight: FontWeight.bold,
-                                              ),
-                                              textAlign: TextAlign.right,
-                                              keyboardType: const TextInputType.numberWithOptions(decimal: true),
-                                              inputFormatters: [
-                                                FilteringTextInputFormatter.allow(RegExp(r'^\d*\.?\d*')),
-                                              ],
-                                              onChanged: (val) {
-                                                productManuallyEdited[p.id] = true;
-                                                final newPct = double.tryParse(val) ?? 0.0;
-                                                final newPrice = p.retailPrice * (1 - (newPct / 100));
-                                                customPriceControllers[p.id]!.text = newPrice.toStringAsFixed(2);
-                                              },
-                                            ),
-                                          ),
-                                        ],
-                                      ),
-                                      const SizedBox(width: 8),
-                                      SizedBox(
-                                        width: 80,
-                                        child: TextField(
-                                          controller: customPriceControllers[p.id],
-                                          decoration: InputDecoration(
-                                            labelText: 'New Price',
-                                            isDense: true,
-                                            contentPadding: const EdgeInsets.symmetric(vertical: 8, horizontal: 8),
-                                            border: OutlineInputBorder(
-                                              borderRadius: BorderRadius.circular(4),
-                                            ),
-                                          ),
-                                          style: const TextStyle(fontSize: 12),
-                                          keyboardType: const TextInputType.numberWithOptions(decimal: true),
-                                          inputFormatters: [
-                                            FilteringTextInputFormatter.allow(RegExp(r'^\d*\.?\d*')),
-                                          ],
-                                          onChanged: (val) {
-                                            productManuallyEdited[p.id] = true;
-                                            final currentPrice = double.tryParse(val) ?? p.retailPrice;
-                                            final discount = p.retailPrice > 0 ? ((p.retailPrice - currentPrice) / p.retailPrice) * 100 : 0.0;
-                                            customPercentageControllers[p.id]!.text = discount.toStringAsFixed(1);
-                                          },
+                                  final isSelected = selectedIds.contains(p.id);
+
+                                  return InkWell(
+                                    onTap: () {
+                                      setState(() {
+                                        if (isSelected) {
+                                          selectedIds.remove(p.id);
+                                        } else {
+                                          selectedIds.add(p.id);
+                                        }
+                                      });
+                                    },
+                                    borderRadius: BorderRadius.circular(AppRadius.s),
+                                    child: Container(
+                                      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+                                      decoration: BoxDecoration(
+                                        color: isSelected 
+                                            ? theme.colorScheme.primary.withValues(alpha: 0.08) 
+                                            : theme.cardColor,
+                                        borderRadius: BorderRadius.circular(AppRadius.s),
+                                        border: Border.all(
+                                          color: isSelected ? theme.colorScheme.primary : theme.dividerColor.withValues(alpha: 0.5),
+                                          width: isSelected ? 1.5 : 1,
                                         ),
                                       ),
-                                    ],
-                                  ),
-                                ),
-                                dense: true,
-                                activeColor: theme.colorScheme.primary,
-                                controlAffinity: ListTileControlAffinity.leading,
-                              );
-                            },
-                          ),
+                                      child: Column(
+                                        crossAxisAlignment: CrossAxisAlignment.start,
+                                        children: [
+                                          Row(
+                                            children: [
+                                              SizedBox(
+                                                width: 22,
+                                                height: 22,
+                                                child: Checkbox(
+                                                  value: isSelected,
+                                                  onChanged: (val) {
+                                                    setState(() {
+                                                      if (val == true) {
+                                                        selectedIds.add(p.id);
+                                                      } else {
+                                                        selectedIds.remove(p.id);
+                                                      }
+                                                    });
+                                                  },
+                                                  materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                                                  activeColor: theme.colorScheme.primary,
+                                                ),
+                                              ),
+                                              const SizedBox(width: 8),
+                                              Expanded(
+                                                child: Column(
+                                                  crossAxisAlignment: CrossAxisAlignment.start,
+                                                  children: [
+                                                    Text(
+                                                      p.name,
+                                                      style: TextStyle(
+                                                        fontSize: 13, 
+                                                        fontWeight: isSelected ? FontWeight.bold : FontWeight.w600,
+                                                        color: theme.colorScheme.onSurface,
+                                                      ),
+                                                      maxLines: 1,
+                                                      overflow: TextOverflow.ellipsis,
+                                                    ),
+                                                    Text(
+                                                      '${p.category} • Current: ₵${p.retailPrice.toStringAsFixed(2)}',
+                                                      style: TextStyle(fontSize: 11, color: theme.colorScheme.onSurfaceVariant),
+                                                    ),
+                                                  ],
+                                                ),
+                                              ),
+                                            ],
+                                          ),
+                                          if (isSelected) ...[
+                                            const SizedBox(height: 8),
+                                            Row(
+                                              mainAxisAlignment: MainAxisAlignment.end,
+                                              children: [
+                                                Text(
+                                                  '₵${p.retailPrice.toStringAsFixed(2)}',
+                                                  style: const TextStyle(
+                                                    fontSize: 11,
+                                                    color: Colors.grey,
+                                                    decoration: TextDecoration.lineThrough,
+                                                  ),
+                                                ),
+                                                const SizedBox(width: 8),
+                                                SizedBox(
+                                                  width: 76,
+                                                  height: 32,
+                                                  child: TextField(
+                                                    controller: customPercentageControllers[p.id],
+                                                    decoration: InputDecoration(
+                                                      suffixText: '% off',
+                                                      suffixStyle: const TextStyle(fontSize: 9, color: Colors.green, fontWeight: FontWeight.bold),
+                                                      isDense: true,
+                                                      contentPadding: const EdgeInsets.symmetric(horizontal: 6, vertical: 6),
+                                                      border: OutlineInputBorder(borderRadius: BorderRadius.circular(4)),
+                                                      focusedBorder: OutlineInputBorder(
+                                                        borderRadius: BorderRadius.circular(4),
+                                                        borderSide: const BorderSide(color: Colors.green, width: 1.5),
+                                                      ),
+                                                    ),
+                                                    style: const TextStyle(fontSize: 11, color: Colors.green, fontWeight: FontWeight.bold),
+                                                    textAlign: TextAlign.right,
+                                                    keyboardType: const TextInputType.numberWithOptions(decimal: true),
+                                                    inputFormatters: [
+                                                      FilteringTextInputFormatter.allow(RegExp(r'^\d*\.?\d*')),
+                                                    ],
+                                                    onChanged: (val) {
+                                                      productManuallyEdited[p.id] = true;
+                                                      final newPct = double.tryParse(val) ?? 0.0;
+                                                      final newPrice = p.retailPrice * (1 - (newPct / 100));
+                                                      customPriceControllers[p.id]!.text = newPrice.toStringAsFixed(2);
+                                                    },
+                                                  ),
+                                                ),
+                                                const SizedBox(width: 8),
+                                                SizedBox(
+                                                  width: 90,
+                                                  height: 32,
+                                                  child: TextField(
+                                                    controller: customPriceControllers[p.id],
+                                                    decoration: InputDecoration(
+                                                      prefixText: '₵',
+                                                      prefixStyle: const TextStyle(fontSize: 10, fontWeight: FontWeight.bold),
+                                                      labelText: 'Price',
+                                                      labelStyle: const TextStyle(fontSize: 10),
+                                                      isDense: true,
+                                                      contentPadding: const EdgeInsets.symmetric(horizontal: 6, vertical: 6),
+                                                      border: OutlineInputBorder(borderRadius: BorderRadius.circular(4)),
+                                                      focusedBorder: OutlineInputBorder(
+                                                        borderRadius: BorderRadius.circular(4),
+                                                        borderSide: BorderSide(color: theme.colorScheme.primary, width: 1.5),
+                                                      ),
+                                                    ),
+                                                    style: const TextStyle(fontSize: 11, fontWeight: FontWeight.bold),
+                                                    textAlign: TextAlign.right,
+                                                    keyboardType: const TextInputType.numberWithOptions(decimal: true),
+                                                    inputFormatters: [
+                                                      FilteringTextInputFormatter.allow(RegExp(r'^\d*\.?\d*')),
+                                                    ],
+                                                    onChanged: (val) {
+                                                      productManuallyEdited[p.id] = true;
+                                                      final currentPrice = double.tryParse(val) ?? p.retailPrice;
+                                                      final discount = p.retailPrice > 0 ? ((p.retailPrice - currentPrice) / p.retailPrice) * 100 : 0.0;
+                                                      customPercentageControllers[p.id]!.text = discount.toStringAsFixed(1);
+                                                    },
+                                                  ),
+                                                ),
+                                              ],
+                                            ),
+                                          ],
+                                        ],
+                                      ),
+                                    ),
+                                  );
+                                },
+                              ),
                       ),
                     ],
                   ),
@@ -802,6 +889,7 @@ class _InventoryControlScreenState extends ConsumerState<InventoryControlScreen>
                       selectedCustomerTarget,
                       selectedIds: selectedIds.toList(),
                       individualPercentages: individualPercentages,
+                      targetCustomerId: selectedCustomerTarget == PromoCustomerTarget.specificPerson ? selectedCustomerId : null,
                     );
                     Navigator.pop(context);
                   }

@@ -2,7 +2,7 @@ import 'customer_model.dart';
 import 'system_models.dart';
 
 enum PromoTarget { retail, wholesale, both }
-enum PromoCustomerTarget { all, regularsOnly }
+enum PromoCustomerTarget { all, regularsOnly, specialOnly, specificPerson }
 
 class PriceBracket {
   final double minWeight;
@@ -49,6 +49,7 @@ class Product {
   final DateTime? promoEndDate;
   final PromoTarget promoTarget;
   final PromoCustomerTarget promoCustomerTarget;
+  final String? targetCustomerId;
   final bool isDeleted; // Soft delete
   final bool isUnlimited; // Stock doesn't decrease on sales
   final double lowStockThreshold;
@@ -73,6 +74,7 @@ class Product {
     this.promoEndDate,
     this.promoTarget = PromoTarget.both,
     this.promoCustomerTarget = PromoCustomerTarget.all,
+    this.targetCustomerId,
     this.isDeleted = false,
     this.isUnlimited = false,
     this.lowStockThreshold = 5.0, // Default threshold
@@ -107,7 +109,18 @@ class Product {
 
     // Check customer target
     if (ignoreCustomerFilter || promoCustomerTarget == PromoCustomerTarget.all) return true;
-    return customer?.isFavorite ?? false;
+    if (customer == null) return false;
+
+    switch (promoCustomerTarget) {
+      case PromoCustomerTarget.all:
+        return true;
+      case PromoCustomerTarget.regularsOnly:
+        return customer.isFavorite;
+      case PromoCustomerTarget.specialOnly:
+        return customer.isSpecial;
+      case PromoCustomerTarget.specificPerson:
+        return targetCustomerId != null && customer.id == targetCustomerId;
+    }
   }
 
   /// Helper to get price based on mode, weight, and active discount
@@ -142,6 +155,7 @@ class Product {
     DateTime? promoEndDate,
     PromoTarget? promoTarget,
     PromoCustomerTarget? promoCustomerTarget,
+    String? targetCustomerId,
     String? category,
     String? unit,
     String? imageUrl,
@@ -169,6 +183,7 @@ class Product {
       promoEndDate: promoEndDate ?? this.promoEndDate,
       promoTarget: promoTarget ?? this.promoTarget,
       promoCustomerTarget: promoCustomerTarget ?? this.promoCustomerTarget,
+      targetCustomerId: targetCustomerId ?? this.targetCustomerId,
       isDeleted: isDeleted ?? this.isDeleted,
       isUnlimited: isUnlimited ?? this.isUnlimited,
       lowStockThreshold: lowStockThreshold ?? this.lowStockThreshold,
@@ -179,6 +194,15 @@ class Product {
 
   factory Product.fromJson(dynamic json) {
     final map = Map<String, dynamic>.from(json);
+    PromoCustomerTarget safeCustomerTarget(String? target) {
+      if (target == null) return PromoCustomerTarget.all;
+      try {
+        return PromoCustomerTarget.values.byName(target);
+      } catch (_) {
+        return PromoCustomerTarget.all;
+      }
+    }
+
     return Product(
       id: map['id'] as String,
       branchCode: map['branch_code'],
@@ -200,7 +224,8 @@ class Product {
       promoStartDate: map['promo_start'] != null ? DateTime.parse(map['promo_start']) : null,
       promoEndDate: map['promo_end'] != null ? DateTime.parse(map['promo_end']) : null,
       promoTarget: PromoTarget.values.byName(map['promo_target'] ?? 'both'),
-      promoCustomerTarget: PromoCustomerTarget.values.byName(map['promo_customer_target'] ?? 'all'),
+      promoCustomerTarget: safeCustomerTarget(map['promo_customer_target']),
+      targetCustomerId: map['target_customer_id']?.toString(),
       isDeleted: map['is_deleted'] ?? false,
       isUnlimited: map['is_unlimited'] ?? false,
       lowStockThreshold: (map['low_stock_threshold'] as num? ?? 5.0).toDouble(),
@@ -227,6 +252,7 @@ class Product {
         'promo_end': promoEndDate?.toIso8601String(),
         'promo_target': promoTarget.name,
         'promo_customer_target': promoCustomerTarget.name,
+        'target_customer_id': targetCustomerId,
         'is_deleted': isDeleted,
         'is_unlimited': isUnlimited,
         'low_stock_threshold': lowStockThreshold,

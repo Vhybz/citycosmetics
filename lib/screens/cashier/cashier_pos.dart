@@ -56,6 +56,7 @@ class _CashierPOSState extends ConsumerState<CashierPOS> {
   // Selected customer for the current sale
   Customer? _selectedCustomer;
   String? _uploadedReceiptUrl;
+  bool _applyDailyPromo = true;
 
   static const Map<String, List<String>> allowedCatalog = {
     'HARD CHICKEN': [
@@ -763,8 +764,31 @@ class _CashierPOSState extends ConsumerState<CashierPOS> {
           child: ListTile(
             dense: true,
             leading: const Icon(Icons.person_outline, size: 20),
-            title: Text(_selectedCustomer?.name ?? 'Select Customer', 
-              style: TextStyle(fontWeight: _selectedCustomer != null ? FontWeight.bold : FontWeight.normal, color: theme.colorScheme.onSurface)),
+            title: Row(
+              children: [
+                Flexible(
+                  child: Text(
+                    _selectedCustomer?.name ?? 'Select Customer', 
+                    style: TextStyle(fontWeight: _selectedCustomer != null ? FontWeight.bold : FontWeight.normal, color: theme.colorScheme.onSurface),
+                    overflow: TextOverflow.ellipsis,
+                  ),
+                ),
+                if (_selectedCustomer?.isSpecial == true)
+                  Container(
+                    margin: const EdgeInsets.only(left: 6),
+                    padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 1.5),
+                    decoration: BoxDecoration(
+                      color: Colors.amber.withValues(alpha: 0.2),
+                      borderRadius: BorderRadius.circular(4),
+                      border: Border.all(color: Colors.amber.shade700, width: 0.8),
+                    ),
+                    child: Text(
+                      '⭐ SPECIAL${_selectedCustomer!.specialDiscountPercentage != null ? " • ${_selectedCustomer!.specialDiscountPercentage!.toStringAsFixed(0)}%" : ""}',
+                      style: TextStyle(fontSize: 8, fontWeight: FontWeight.bold, color: Colors.amber.shade900),
+                    ),
+                  ),
+              ],
+            ),
             subtitle: _selectedCustomer != null ? Text(_selectedCustomer!.phone, style: TextStyle(fontSize: 10, color: theme.colorScheme.onSurfaceVariant)) : null,
             trailing: Row(
               mainAxisSize: MainAxisSize.min,
@@ -900,24 +924,43 @@ class _CashierPOSState extends ConsumerState<CashierPOS> {
     final isWholesale = ref.watch(isWholesaleProvider);
     final subtotal = ref.watch(cartProvider.notifier).subtotal;
 
-    // Promotion Logic
+    // Promotion & Special Discount Logic
     double discountPercentage = 0;
     String promoLabel = '';
-    
-    if (isWholesale && subtotal > 0) {
+    bool promoAvailable = false;
+    final bool promoAlreadyUsedToday = _selectedCustomer?.hasUsedDailyPromoToday ?? false;
+
+    if (subtotal > 0 && _selectedCustomer != null) {
+      if (_selectedCustomer!.isSpecial || (_selectedCustomer!.specialDiscountPercentage != null && _selectedCustomer!.specialDiscountPercentage! > 0)) {
+        final pct = (_selectedCustomer!.specialDiscountPercentage ?? 10.0) / 100.0;
+        discountPercentage = pct;
+        promoLabel = 'Special Customer Discount (${(_selectedCustomer!.specialDiscountPercentage ?? 10.0).toStringAsFixed(0)}% OFF)';
+        promoAvailable = true;
+      } else if (isWholesale) {
+        final totalWeight = cartItems.fold(0.0, (sum, item) => sum + item.quantity);
+        final bool isFavorite = _selectedCustomer?.isFavorite ?? false;
+        
+        if (isFavorite) {
+          discountPercentage = 0.10;
+          promoLabel = '${cartItems.first.product.category} - Favorite Customer Reward (10% OFF)';
+          promoAvailable = true;
+        } else if (totalWeight >= 10) {
+          discountPercentage = 0.05;
+          promoLabel = '${cartItems.first.product.category} - Bulk Purchase Reward (5% OFF)';
+          promoAvailable = true;
+        }
+      }
+    } else if (isWholesale && subtotal > 0) {
       final totalWeight = cartItems.fold(0.0, (sum, item) => sum + item.quantity);
-      final bool isFavorite = _selectedCustomer?.isFavorite ?? false;
-      
-      if (isFavorite) {
-        discountPercentage = 0.10;
-        promoLabel = '${cartItems.first.product.category} - Favorite Customer Reward (10% OFF)';
-      } else if (totalWeight >= 10) {
+      if (totalWeight >= 10) {
         discountPercentage = 0.05;
         promoLabel = '${cartItems.first.product.category} - Bulk Purchase Reward (5% OFF)';
+        promoAvailable = true;
       }
     }
 
-    final discount = subtotal * discountPercentage;
+    final bool isPromoActive = promoAvailable && _applyDailyPromo && !promoAlreadyUsedToday;
+    final discount = isPromoActive ? (subtotal * discountPercentage) : 0.0;
     final total = subtotal - discount;
 
     return Container(
@@ -929,6 +972,58 @@ class _CashierPOSState extends ConsumerState<CashierPOS> {
       ),
       child: Column(
         children: [
+          if (promoAvailable && promoAlreadyUsedToday)
+            Container(
+              margin: const EdgeInsets.only(bottom: 8),
+              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+              decoration: BoxDecoration(
+                color: Colors.amber.shade50,
+                borderRadius: BorderRadius.circular(AppRadius.s),
+                border: Border.all(color: Colors.amber.shade400),
+              ),
+              child: Row(
+                children: [
+                  Icon(Icons.event_busy_rounded, size: 16, color: Colors.amber.shade900),
+                  const SizedBox(width: 8),
+                  Expanded(
+                    child: Text(
+                      'Daily promo already used today by ${_selectedCustomer!.name}. (Once-a-day limit reached)',
+                      style: TextStyle(fontSize: 11, color: Colors.amber.shade900, fontWeight: FontWeight.bold),
+                    ),
+                  ),
+                ],
+              ),
+            )
+          else if (promoAvailable)
+            Container(
+              margin: const EdgeInsets.only(bottom: 8),
+              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+              decoration: BoxDecoration(
+                color: _applyDailyPromo ? Colors.green.shade50 : Colors.grey.shade100,
+                borderRadius: BorderRadius.circular(AppRadius.s),
+                border: Border.all(color: _applyDailyPromo ? Colors.green.shade300 : Colors.grey.shade300),
+              ),
+              child: Row(
+                children: [
+                  Icon(Icons.verified_outlined, size: 16, color: _applyDailyPromo ? Colors.green.shade800 : Colors.grey),
+                  const SizedBox(width: 8),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(promoLabel, style: TextStyle(fontSize: 11, fontWeight: FontWeight.bold, color: _applyDailyPromo ? Colors.green.shade900 : Colors.grey.shade700)),
+                        Text('Promo selected once a day per customer', style: TextStyle(fontSize: 9, color: _applyDailyPromo ? Colors.green.shade700 : Colors.grey)),
+                      ],
+                    ),
+                  ),
+                  Checkbox(
+                    value: _applyDailyPromo,
+                    activeColor: Colors.green.shade700,
+                    onChanged: (val) => setState(() => _applyDailyPromo = val ?? true),
+                  ),
+                ],
+              ),
+            ),
           if (discount > 0) ...[
             _summaryRow('Subtotal', '₵${subtotal.toStringAsFixed(2)}', fontSize: 13),
             _summaryRow(promoLabel, '-₵${discount.toStringAsFixed(2)}', color: Colors.green, fontSize: 12),
@@ -1199,19 +1294,30 @@ class _CashierPOSState extends ConsumerState<CashierPOS> {
     );
 
     await ref.read(saleHistoryProvider.notifier).addSale(sale);
+
+    // Record promo usage on customer if a promotional discount was applied
+    if (_selectedCustomer != null && discount > 0) {
+      final updatedCustomer = _selectedCustomer!.copyWith(lastPromoDate: DateTime.now());
+      ref.read(customerProvider.notifier).updateCustomer(updatedCustomer);
+    }
+
     ref.read(cartProvider.notifier).clear();
     
-    // Send SMS with branch identification
-    final currentBranch = ref.read(currentBranchProvider);
-    final String? branchName = currentBranch != null 
-        ? '${currentBranch.name} (${currentBranch.location})' 
-        : null;
+    // Send SMS with branch identification only if fully paid (NOT a debt)
+    // When a sale is recorded as debt, do NOT send SMS instantly; reminders are sent via Debt Tracker.
+    if (sale.balance <= 0.01) {
+      final currentBranch = ref.read(currentBranchProvider);
+      final String? branchName = currentBranch != null 
+          ? '${currentBranch.name} (${currentBranch.location})' 
+          : null;
 
-    SmsService.sendReceiptSms(sale, discountAmount: discount, branchName: branchName);
+      SmsService.sendReceiptSms(sale, discountAmount: discount, branchName: branchName);
+    }
 
     setState(() {
       _selectedCustomer = null;
       _uploadedReceiptUrl = null;
+      _applyDailyPromo = true;
     });
 
     _showPrintConfirmation(sale);
@@ -1435,7 +1541,7 @@ class _CashierPOSState extends ConsumerState<CashierPOS> {
     final Map<String, ({double qty, String category})> productStatsMap = {};
 
     for (var sale in filteredHistory) {
-      if (sale.status == SaleStatus.cancelled) continue;
+      if (!sale.isActive) continue;
       totalSales += sale.totalAmount;
       totalCost += sale.totalCost;
       for (var item in sale.items) {
@@ -1668,14 +1774,14 @@ class _CashierPOSState extends ConsumerState<CashierPOS> {
                           s.timestamp.month == targetDate.month && 
                           s.timestamp.day == targetDate.day &&
                           s.timestamp.hour >= h && s.timestamp.hour < h + 2 &&
-                          s.status != SaleStatus.cancelled)
+                          s.isActive)
             .fold(0.0, (sum, s) => sum + s.totalAmount);
       }).toList();
       labels = hours.map((h) => '${h > 12 ? h - 12 : h}${h >= 12 ? 'pm' : 'am'}').toList();
     } else {
       chartData = dates.map((date) {
         return sales
-            .where((s) => s.timestamp.year == date.year && s.timestamp.month == date.month && s.timestamp.day == date.day && s.status != SaleStatus.cancelled)
+            .where((s) => s.timestamp.year == date.year && s.timestamp.month == date.month && s.timestamp.day == date.day && s.isActive)
             .fold(0.0, (sum, s) => sum + s.totalAmount);
       }).toList();
       labels = dates.map((d) => DateFormat('E').format(d).substring(0, 1)).toList();
@@ -1807,6 +1913,7 @@ class _CashierPOSState extends ConsumerState<CashierPOS> {
   void _showReceiptOptionsDialog(SaleRecord sale) {
     final currentBranch = ref.read(currentBranchProvider);
     bool isProcessing = false;
+    final isDebt = sale.balance > 0.01;
 
     showDialog(
       context: context,
@@ -1841,9 +1948,12 @@ class _CashierPOSState extends ConsumerState<CashierPOS> {
                     context,
                     icon: Icons.sms_rounded,
                     title: 'SEND VIA SMS',
-                    subtitle: sale.customerPhone ?? 'Enter custom number',
-                    enabled: true,
+                    subtitle: isDebt 
+                        ? 'Disabled for debts • Send reminder from Debt Tracker' 
+                        : (sale.customerPhone ?? 'Enter custom number'),
+                    enabled: !isDebt,
                     onTap: () async {
+                      if (isDebt) return;
                       String? targetPhone = sale.customerPhone;
                       
                       if (targetPhone == null || targetPhone.isEmpty) {
@@ -2916,6 +3026,7 @@ class _CustomerSelectionDialogState extends ConsumerState<CustomerSelectionDialo
   final _locationController = TextEditingController();
   final _searchController = TextEditingController();
   String _searchQuery = '';
+  String _customerTypeFilter = 'ALL'; // ALL, SPECIAL, FAVORITES, WHOLESALER
   late bool _isNewCustomer;
   bool _isWholesaler = false; // NEW
 
@@ -2941,15 +3052,22 @@ class _CustomerSelectionDialogState extends ConsumerState<CustomerSelectionDialo
       });
     }
 
-    final filtered = sortedCustomers.where((c) => 
-      c.name.toLowerCase().contains(_searchQuery.toLowerCase()) || 
-      c.phone.contains(_searchQuery)
-    ).toList();
+    final filtered = sortedCustomers.where((c) {
+      if (_customerTypeFilter == 'SPECIAL' && !c.isSpecial) return false;
+      if (_customerTypeFilter == 'FAVORITES' && !c.isFavorite) return false;
+      if (_customerTypeFilter == 'WHOLESALER' && !c.isWholesaler) return false;
+
+      final query = _searchQuery.trim().toLowerCase();
+      if (query.isEmpty) return true;
+      return c.name.toLowerCase().contains(query) || 
+             c.phone.contains(query) ||
+             (c.location?.toLowerCase().contains(query) ?? false);
+    }).toList();
 
     return Dialog(
       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(AppRadius.l)),
       child: ConstrainedBox(
-        constraints: const BoxConstraints(maxWidth: 380, maxHeight: 600),
+        constraints: const BoxConstraints(maxWidth: 400, maxHeight: 620),
         child: Padding(
           padding: const EdgeInsets.all(AppSpacing.l),
           child: Column(
@@ -2984,17 +3102,33 @@ class _CustomerSelectionDialogState extends ConsumerState<CustomerSelectionDialo
                 TextField(
                   controller: _searchController,
                   decoration: InputDecoration(
-                    hintText: 'Search name or phone...',
+                    hintText: 'Search name, phone or town...',
                     prefixIcon: const Icon(Icons.search, size: 20),
                     border: OutlineInputBorder(borderRadius: BorderRadius.circular(AppRadius.s)),
                     isDense: true,
+                    contentPadding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
                   ),
                   onChanged: (v) => setState(() => _searchQuery = v),
                 ),
-                const SizedBox(height: 12),
+                const SizedBox(height: 8),
+                SingleChildScrollView(
+                  scrollDirection: Axis.horizontal,
+                  child: Row(
+                    children: [
+                      _buildPosFilterChip('All', 'ALL', theme),
+                      const SizedBox(width: 4),
+                      _buildPosFilterChip('⭐ Special', 'SPECIAL', theme, color: Colors.amber),
+                      const SizedBox(width: 4),
+                      _buildPosFilterChip('★ Favorites', 'FAVORITES', theme, color: Colors.orange),
+                      const SizedBox(width: 4),
+                      _buildPosFilterChip('Wholesale', 'WHOLESALER', theme, color: Colors.purpleAccent),
+                    ],
+                  ),
+                ),
+                const SizedBox(height: 8),
                 Expanded(
                   child: filtered.isEmpty
-                    ? const Center(child: Text('No matches found.', style: TextStyle(color: AppColors.textLight, fontSize: 12)))
+                    ? const Center(child: Text('No matching customers found.', style: TextStyle(color: AppColors.textLight, fontSize: 12)))
                     : ListView.builder(
                         itemCount: filtered.length,
                         itemBuilder: (context, index) {
@@ -3006,11 +3140,31 @@ class _CustomerSelectionDialogState extends ConsumerState<CustomerSelectionDialo
                               child: Icon(c.isFavorite ? Icons.star : Icons.person,
                                   color: c.isFavorite ? Colors.orange : theme.colorScheme.primary, size: 20),
                             ),
-                            title: Text(c.name, style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 14)),
+                            title: Text(c.name, style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 13)),
                             subtitle: Text(
                               '${c.isWholesaler ? "WHOLESALER" : "RETAILER"} • ${c.phone}${c.location != null ? " • ${c.location}" : ""}', 
                               style: TextStyle(fontSize: 10, color: c.isWholesaler ? theme.colorScheme.primary : theme.colorScheme.onSurfaceVariant, fontWeight: c.isWholesaler ? FontWeight.bold : FontWeight.normal)
                             ),
+                            trailing: c.isSpecial
+                                ? Container(
+                                    padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                                    decoration: BoxDecoration(
+                                      color: Colors.amber.withValues(alpha: 0.15),
+                                      borderRadius: BorderRadius.circular(6),
+                                      border: Border.all(color: Colors.amber, width: 0.8),
+                                    ),
+                                    child: Text(
+                                      c.specialDiscountPercentage != null && c.specialDiscountPercentage! > 0
+                                          ? '⭐ ${c.specialDiscountPercentage!.toStringAsFixed(0)}% OFF'
+                                          : '⭐ VIP',
+                                      style: const TextStyle(
+                                        fontSize: 9,
+                                        fontWeight: FontWeight.bold,
+                                        color: Colors.amber,
+                                      ),
+                                    ),
+                                  )
+                                : null,
                             onTap: () {
                               widget.onSelected(c);
                               Navigator.pop(context);
@@ -3136,6 +3290,25 @@ class _CustomerSelectionDialogState extends ConsumerState<CustomerSelectionDialo
           ),
         ),
       ),
+    );
+  }
+
+  Widget _buildPosFilterChip(String label, String type, ThemeData theme, {Color? color}) {
+    final selected = _customerTypeFilter == type;
+    final activeColor = color ?? theme.colorScheme.primary;
+
+    return ChoiceChip(
+      label: Text(label),
+      selected: selected,
+      onSelected: (_) => setState(() => _customerTypeFilter = type),
+      selectedColor: activeColor,
+      labelStyle: TextStyle(
+        fontSize: 10,
+        fontWeight: selected ? FontWeight.bold : FontWeight.normal,
+        color: selected ? Colors.white : (color ?? theme.colorScheme.onSurface),
+      ),
+      padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 0),
+      visualDensity: VisualDensity.compact,
     );
   }
 }
@@ -3678,6 +3851,7 @@ class _ReceiptSuccessDialogState extends State<ReceiptSuccessDialog> {
   }
 
   void _showReceiptOptionsDialog(SaleRecord sale) {
+    final isDebt = sale.balance > 0.01;
     showDialog(
       context: context,
       builder: (context) => AlertDialog(
@@ -3702,9 +3876,13 @@ class _ReceiptSuccessDialogState extends State<ReceiptSuccessDialog> {
               },
             ),
             ListTile(
-              leading: const Icon(Icons.sms, color: Colors.orange),
+              leading: Icon(Icons.sms, color: isDebt ? Colors.grey : Colors.orange),
               title: const Text('Send SMS Confirmation'),
-              onTap: () async {
+              subtitle: isDebt 
+                  ? const Text('Debt reminder must be sent from Debt Tracker', style: TextStyle(fontSize: 11, color: Colors.orange)) 
+                  : null,
+              enabled: !isDebt,
+              onTap: isDebt ? null : () async {
                 String? targetPhone = sale.customerPhone;
                 if (targetPhone == null || targetPhone.isEmpty) {
                   targetPhone = await PhonePromptDialog.show(context);

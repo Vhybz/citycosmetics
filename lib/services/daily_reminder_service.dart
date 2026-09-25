@@ -7,7 +7,6 @@ import 'till_provider.dart';
 import 'user_provider.dart';
 import 'sms_service.dart';
 import '../models/user_model.dart';
-import '../models/sale_model.dart';
 
 final dailyReminderServiceProvider = Provider((ref) => DailyReminderService(ref));
 
@@ -42,8 +41,7 @@ class DailyReminderService {
             s.timestamp.year == now.year && 
             s.timestamp.month == now.month && 
             s.timestamp.day == now.day &&
-            s.status != SaleStatus.cancelled &&
-            s.status != SaleStatus.reversed)
+            s.isActive)
           .fold(0.0, (sum, s) => sum + s.totalAmount);
 
       if (todaySalesTotal <= 0) {

@@ -133,9 +133,94 @@ class _AccountSwitchDialogState extends ConsumerState<AccountSwitchDialog> {
       ),
     );
 
-    if (success == true) {
+    if (success == true && mounted) {
+      // Only prompt to create a PIN if user has passcode enabled and passcode is null
+      if (widget.targetUser.isPasscodeEnabled && widget.targetUser.passcode == null) {
+        await _promptCreatePin();
+      }
       _switchAccount();
     }
+  }
+
+  Future<void> _promptCreatePin() async {
+    final pinController = TextEditingController();
+    final confirmController = TextEditingController();
+    final formKey = GlobalKey<FormState>();
+
+    await showDialog(
+      context: context,
+      barrierDismissible: false,
+      builder: (context) => AlertDialog(
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(AppRadius.l)),
+        title: const Row(
+          children: [
+            Icon(Icons.pin_rounded, color: AppColors.primaryMaroon),
+            SizedBox(width: 8),
+            Text('Set 4-Digit Quick PIN', style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
+          ],
+        ),
+        content: Form(
+          key: formKey,
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Text(
+                'Create a 4-digit PIN for ${widget.targetUser.firstName} so you can switch accounts in seconds next time without password.',
+                style: const TextStyle(fontSize: 12),
+              ),
+              const SizedBox(height: 16),
+              TextFormField(
+                controller: pinController,
+                obscureText: true,
+                keyboardType: TextInputType.number,
+                inputFormatters: [
+                  FilteringTextInputFormatter.digitsOnly,
+                  LengthLimitingTextInputFormatter(4),
+                ],
+                decoration: const InputDecoration(labelText: 'New 4-Digit PIN', border: OutlineInputBorder()),
+                validator: (v) => (v == null || v.length != 4) ? 'Enter 4 digits' : null,
+              ),
+              const SizedBox(height: 12),
+              TextFormField(
+                controller: confirmController,
+                obscureText: true,
+                keyboardType: TextInputType.number,
+                inputFormatters: [
+                  FilteringTextInputFormatter.digitsOnly,
+                  LengthLimitingTextInputFormatter(4),
+                ],
+                decoration: const InputDecoration(labelText: 'Confirm PIN', border: OutlineInputBorder()),
+                validator: (v) => v != pinController.text ? 'PINs do not match' : null,
+              ),
+            ],
+          ),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: const Text('SKIP FOR NOW'),
+          ),
+          ElevatedButton(
+            onPressed: () async {
+              if (formKey.currentState!.validate()) {
+                try {
+                  await ref.read(userProvider.notifier).updatePasscode(
+                    widget.targetUser.id,
+                    pinController.text.trim(),
+                    lockAfterUpdate: false,
+                  );
+                  if (context.mounted) Navigator.pop(context);
+                } catch (e) {
+                  debugPrint('Error setting PIN: $e');
+                }
+              }
+            },
+            style: ElevatedButton.styleFrom(backgroundColor: AppColors.primaryMaroon, foregroundColor: Colors.white),
+            child: const Text('SAVE PIN & SWITCH'),
+          ),
+        ],
+      ),
+    );
   }
 
   void _switchAccount() {
@@ -168,55 +253,104 @@ class _AccountSwitchDialogState extends ConsumerState<AccountSwitchDialog> {
                 _buildUserHeader(theme),
                 const SizedBox(height: 40),
                 
-                // Passcode Dots
-                Row(
-                  mainAxisAlignment: MainAxisAlignment.center,
-                  children: List.generate(4, (index) {
-                    final filled = _pinController.text.length > index;
-                    return Container(
-                      margin: const EdgeInsets.symmetric(horizontal: 12),
-                      width: 14,
-                      height: 14,
-                      decoration: BoxDecoration(
-                        shape: BoxShape.circle,
-                        color: filled ? AppColors.primaryMaroon : (isDark ? Colors.grey.shade800 : Colors.grey.shade200),
-                        border: Border.all(color: filled ? AppColors.primaryMaroon : theme.dividerColor),
-                      ),
-                    );
-                  }),
-                ),
-                
-                if (_error.isNotEmpty)
-                  Padding(
-                    padding: const EdgeInsets.only(top: 24),
-                    child: Text(_error, style: const TextStyle(color: Colors.red, fontWeight: FontWeight.bold, fontSize: 13), textAlign: TextAlign.center),
+                if (widget.targetUser.isPasscodeEnabled && widget.targetUser.passcode != null && widget.targetUser.passcode!.isNotEmpty) ...[
+                  // Passcode Dots
+                  Row(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    children: List.generate(4, (index) {
+                      final filled = _pinController.text.length > index;
+                      return Container(
+                        margin: const EdgeInsets.symmetric(horizontal: 12),
+                        width: 14,
+                        height: 14,
+                        decoration: BoxDecoration(
+                          shape: BoxShape.circle,
+                          color: filled ? AppColors.primaryMaroon : (isDark ? Colors.grey.shade800 : Colors.grey.shade200),
+                          border: Border.all(color: filled ? AppColors.primaryMaroon : theme.dividerColor),
+                        ),
+                      );
+                    }),
                   ),
                   
-                const SizedBox(height: 40),
-                
-                // Keypad
-                GridView.count(
-                  shrinkWrap: true,
-                  crossAxisCount: 3,
-                  mainAxisSpacing: 12,
-                  crossAxisSpacing: 12,
-                  childAspectRatio: 1.6,
-                  physics: const NeverScrollableScrollPhysics(),
-                  children: [
-                    ...List.generate(9, (index) => _keypadButton('${index + 1}')),
-                    _keypadButton('Cancel', isAction: true, color: Colors.grey.shade400, onTap: () => Navigator.pop(context)),
-                    _keypadButton('0'),
-                    _keypadButton('Delete', isAction: true, color: const Color(0xFFFFF1EB), icon: Icons.backspace_outlined, iconColor: Colors.orange.shade800, onTap: _onDelete),
-                  ],
-                ),
+                  if (_error.isNotEmpty)
+                    Padding(
+                      padding: const EdgeInsets.only(top: 24),
+                      child: Text(_error, style: const TextStyle(color: Colors.red, fontWeight: FontWeight.bold, fontSize: 13), textAlign: TextAlign.center),
+                    ),
+                    
+                  const SizedBox(height: 40),
+                  
+                  // Keypad
+                  GridView.count(
+                    shrinkWrap: true,
+                    crossAxisCount: 3,
+                    mainAxisSpacing: 12,
+                    crossAxisSpacing: 12,
+                    childAspectRatio: 1.6,
+                    physics: const NeverScrollableScrollPhysics(),
+                    children: [
+                      ...List.generate(9, (index) => _keypadButton('${index + 1}')),
+                      _keypadButton('Cancel', isAction: true, color: Colors.grey.shade400, onTap: () => Navigator.pop(context)),
+                      _keypadButton('0'),
+                      _keypadButton('Delete', isAction: true, color: const Color(0xFFFFF1EB), icon: Icons.backspace_outlined, iconColor: Colors.orange.shade800, onTap: _onDelete),
+                    ],
+                  ),
 
-                const SizedBox(height: 24),
-                
-                // Password Fallback
-                TextButton(
-                  onPressed: _showPasswordFallback,
-                  child: const Text('USE ACCOUNT PASSWORD', style: TextStyle(fontWeight: FontWeight.bold, color: Colors.grey, fontSize: 12)),
-                ),
+                  const SizedBox(height: 24),
+                  
+                  // Password Fallback
+                  TextButton(
+                    onPressed: _showPasswordFallback,
+                    child: const Text('USE ACCOUNT PASSWORD', style: TextStyle(fontWeight: FontWeight.bold, color: Colors.grey, fontSize: 12)),
+                  ),
+                ] else ...[
+                  const SizedBox(height: 16),
+                  Container(
+                    padding: const EdgeInsets.all(AppSpacing.l),
+                    decoration: BoxDecoration(
+                      color: isDark ? Colors.white.withValues(alpha: 0.05) : Colors.grey.shade100,
+                      borderRadius: BorderRadius.circular(AppRadius.m),
+                      border: Border.all(color: theme.dividerColor.withValues(alpha: 0.5)),
+                    ),
+                    child: Column(
+                      children: [
+                        const Icon(Icons.password_rounded, size: 40, color: AppColors.primaryMaroon),
+                        const SizedBox(height: 12),
+                        const Text(
+                          'Quick PIN is disabled for this user',
+                          style: TextStyle(fontWeight: FontWeight.bold, fontSize: 14),
+                          textAlign: TextAlign.center,
+                        ),
+                        const SizedBox(height: 6),
+                        Text(
+                          'Authenticate using ${widget.targetUser.firstName}\'s account password to switch.',
+                          style: const TextStyle(fontSize: 12, color: Colors.grey),
+                          textAlign: TextAlign.center,
+                        ),
+                        const SizedBox(height: 20),
+                        SizedBox(
+                          width: double.infinity,
+                          height: 48,
+                          child: ElevatedButton.icon(
+                            onPressed: _showPasswordFallback,
+                            icon: const Icon(Icons.vpn_key_rounded),
+                            label: const Text('ENTER PASSWORD TO SWITCH', style: TextStyle(fontWeight: FontWeight.bold)),
+                            style: ElevatedButton.styleFrom(
+                              backgroundColor: AppColors.primaryMaroon,
+                              foregroundColor: Colors.white,
+                              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                            ),
+                          ),
+                        ),
+                        const SizedBox(height: 10),
+                        TextButton(
+                          onPressed: () => Navigator.pop(context),
+                          child: const Text('CANCEL', style: TextStyle(color: Colors.grey)),
+                        ),
+                      ],
+                    ),
+                  ),
+                ],
               ],
             ),
           ),

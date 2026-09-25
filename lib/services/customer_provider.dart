@@ -150,6 +150,16 @@ class CustomerNotifier extends StateNotifier<List<Customer>> {
     }
   }
 
+  Future<void> toggleSpecial(String id, {double? discountPercentage}) async {
+    final customer = state.firstWhere((c) => c.id == id);
+    final isSpecialNow = !customer.isSpecial;
+    final updatedCustomer = customer.copyWith(
+      isSpecial: isSpecialNow,
+      specialDiscountPercentage: isSpecialNow ? (discountPercentage ?? customer.specialDiscountPercentage ?? 10.0) : null,
+    );
+    await updateCustomer(updatedCustomer);
+  }
+
   Future<void> updateCustomer(Customer customer) async {
     try {
       final connectivity = await Connectivity().checkConnectivity();
@@ -204,6 +214,35 @@ class CustomerNotifier extends StateNotifier<List<Customer>> {
       final updatedCustomer = customer.copyWith(
         loyaltyPoints: customer.loyaltyPoints + (amount / 10.0),
         visitCount: customer.visitCount + 1,
+      );
+      await OfflineSyncService.addToQueue(
+        actionType: 'CUSTOMER',
+        data: updatedCustomer.toJson(),
+      );
+      state = [for (final c in state) if (c.id == customerId) updatedCustomer else c];
+    }
+  }
+
+  Future<void> deductLoyaltyPoints(String customerId, double amount) async {
+    try {
+      final customer = state.firstWhere((c) => c.id == customerId);
+      final pointsLost = amount / 10.0;
+      final updatedCustomer = customer.copyWith(
+        loyaltyPoints: (customer.loyaltyPoints - pointsLost).clamp(0.0, double.infinity),
+        visitCount: (customer.visitCount - 1).clamp(0, 1000000),
+      );
+      
+      final connectivity = await Connectivity().checkConnectivity();
+      if (!connectivity.contains(ConnectivityResult.none)) {
+        await _service.updateCustomer(updatedCustomer);
+      } else {
+        throw Exception('Offline');
+      }
+    } catch (e) {
+      final customer = state.firstWhere((c) => c.id == customerId);
+      final updatedCustomer = customer.copyWith(
+        loyaltyPoints: (customer.loyaltyPoints - (amount / 10.0)).clamp(0.0, double.infinity),
+        visitCount: (customer.visitCount - 1).clamp(0, 1000000),
       );
       await OfflineSyncService.addToQueue(
         actionType: 'CUSTOMER',

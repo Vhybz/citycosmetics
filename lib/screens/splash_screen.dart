@@ -86,6 +86,12 @@ class _SplashScreenState extends ConsumerState<SplashScreen> with SingleTickerPr
 
           if (userAccount != null && userAccount.status == AccountStatus.approved) {
             forceTimer.cancel();
+            ref.read(sessionUserProfileProvider.notifier).state = userAccount;
+            if (userAccount.isPasscodeEnabled && userAccount.passcode != null && userAccount.passcode!.isNotEmpty) {
+              ref.read(passcodeUnlockedProvider.notifier).state = false;
+            } else {
+              ref.read(passcodeUnlockedProvider.notifier).state = true;
+            }
             if (mounted) {
               switch (userAccount.activePrimaryRole) {
                 case UserRole.admin:

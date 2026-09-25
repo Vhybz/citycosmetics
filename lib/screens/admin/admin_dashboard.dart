@@ -757,7 +757,6 @@ class _AdminDashboardState extends ConsumerState<AdminDashboard> {
     final debtCollectionsCash = TillNotifier.getDebtCollectionsForDate(closureDate, salesHistory, cashOnly: true);
     final debtCollectionsAll = TillNotifier.getDebtCollectionsForDate(closureDate, salesHistory, cashOnly: false);
     final double debtCollectionsCashTotal = debtCollectionsCash.fold(0.0, (sum, c) => sum + c.amountPaid);
-    final double debtCollectionsTotal = debtCollectionsCashTotal;
     
     showDialog(
       context: context,
@@ -1283,10 +1282,10 @@ class _AdminDashboardState extends ConsumerState<AdminDashboard> {
                                           Navigator.pushNamed(context, '/admin/product-report');
                                         }
                                       } else if (r['title'] == 'Daily Sales Report') {
-                                        final sales = ref.read(saleHistoryProvider);
+                                        final sales = ref.read(saleHistoryProvider).where((s) => s.isActive).toList();
                                         await ReportService.generateDailySalesReport(sales, DateTime.now());
                                       } else if (r['title'] == 'Monthly Revenue Summary') {
-                                        final sales = ref.read(saleHistoryProvider);
+                                        final sales = ref.read(saleHistoryProvider).where((s) => s.isActive).toList();
                                         await ReportService.generateMonthlyRevenueSummary(sales, DateTime.now());
                                       } else if (r['title'] == 'Inventory Audit') {
                                         final products = ref.read(productsFutureProvider).value ?? [];
@@ -1298,13 +1297,13 @@ class _AdminDashboardState extends ConsumerState<AdminDashboard> {
                                         final expenses = ref.read(expenseProvider).records;
                                         await ReportService.generateExpenseLedger(expenses);
                                       } else if (r['title'] == 'Customer Debt Statement') {
-                                        final sales = ref.read(saleHistoryProvider);
+                                        final sales = ref.read(saleHistoryProvider).where((s) => s.isActive).toList();
                                         await ReportService.generateCustomerDebtStatement(sales);
                                       } else if (r['title'] == 'Meat Breakdown Analysis') {
                                         final cuts = ref.read(recentCutsProvider).value ?? [];
                                         await ReportService.generateMeatBreakdownAnalysis(cuts);
                                       } else if (r['title'] == 'Staff Performance') {
-                                        final sales = ref.read(saleHistoryProvider);
+                                        final sales = ref.read(saleHistoryProvider).where((s) => s.isActive).toList();
                                         final staff = ref.read(userProvider);
                                         await ReportService.generateStaffPerformanceReport(sales, staff);
                                       } else {
@@ -1351,7 +1350,7 @@ class _AdminDashboardState extends ConsumerState<AdminDashboard> {
     
     // Monthly Reset Logic: Filter all core metrics by current month
     final sales = allSales.where((s) => 
-      s.status != SaleStatus.cancelled && 
+      s.isActive && 
       s.timestamp.month == now.month && 
       s.timestamp.year == now.year
     ).toList();
@@ -1362,8 +1361,8 @@ class _AdminDashboardState extends ConsumerState<AdminDashboard> {
       return date.day == now.day && date.month == now.month && date.year == now.year;
     }).toList() ?? [];
 
-    final totalRevenue = sales.where((s) => s.isActive).fold(0.0, (sum, sale) => sum + sale.totalAmount);
-    final totalCost = sales.where((s) => s.isActive).fold(0.0, (sum, sale) => sum + sale.totalCost);
+    final totalRevenue = sales.fold(0.0, (sum, sale) => sum + sale.totalAmount);
+    final totalCost = sales.fold(0.0, (sum, sale) => sum + sale.totalCost);
     final grossProfit = totalRevenue - totalCost;
     
     // Total Debt should reflect all-time outstanding balance, not just the current month
@@ -1511,7 +1510,8 @@ class _AdminDashboardState extends ConsumerState<AdminDashboard> {
 
   Widget _buildResponsiveMainContent(BuildContext context, WidgetRef ref) {
     final isDesktop = ResponsiveLayout.isDesktop(context);
-    final sales = ref.watch(saleHistoryProvider);
+    final allSales = ref.watch(saleHistoryProvider);
+    final sales = allSales.where((s) => s.isActive).toList();
     final logsAsync = ref.watch(slaughterLogsProvider);
     
     final promoSales = sales.where((s) => s.totalDiscount > 0).toList();
@@ -1737,10 +1737,12 @@ class _AdminDashboardState extends ConsumerState<AdminDashboard> {
       return now.subtract(Duration(days: 6 - index));
     });
 
+    final activeSales = sales.where((s) => s.isActive).toList();
+
     final dailyRevenue = last7Days.map((date) {
-      final total = sales
-          .where((s) => s.timestamp.year == date.year && 
-                        s.timestamp.month == date.month && 
+      final total = activeSales
+          .where((s) => s.timestamp.year == date.year &&
+                        s.timestamp.month == date.month &&
                         s.timestamp.day == date.day)
           .fold(0.0, (sum, s) => sum + s.totalAmount);
       return total;
@@ -1751,7 +1753,7 @@ class _AdminDashboardState extends ConsumerState<AdminDashboard> {
 
     // Top Selling Category Logic
     final categoryStats = <String, double>{};
-    for (var sale in sales) {
+    for (var sale in activeSales) {
       for (var item in sale.items) {
         categoryStats[item.product.category] = (categoryStats[item.product.category] ?? 0) + item.total;
       }
@@ -1849,7 +1851,7 @@ class _AdminDashboardState extends ConsumerState<AdminDashboard> {
                             gradient: LinearGradient(
                               begin: Alignment.topCenter,
                               end: Alignment.bottomCenter,
-                              colors: isToday 
+                              colors: isToday
                                 ? [theme.colorScheme.primary, theme.colorScheme.primary.withValues(alpha: 0.7)]
                                 : [Colors.blue.shade400, Colors.blue.shade200],
                             ),

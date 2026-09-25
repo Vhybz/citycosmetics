@@ -153,6 +153,11 @@ class _PasscodeGuardState extends ConsumerState<PasscodeGuard> {
     final user = ref.watch(currentUserProvider);
     final isLockedDown = ref.watch(systemLockdownProvider);
 
+    // If user has disabled passcode or has no passcode set, bypass guard completely!
+    if (user == null || !user.isPasscodeEnabled || user.passcode == null || user.passcode!.isEmpty) {
+      return widget.child;
+    }
+
     // Only bypass if explicitly unlocked AND system is not in lockdown.
     if (unlocked && !isLockedDown) {
       return widget.child;

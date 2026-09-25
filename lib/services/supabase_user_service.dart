@@ -22,10 +22,23 @@ class SupabaseUserService {
   }
 
   Future<void> updateUser(UserAccount account) async {
-    await _client
-        .from('users')
-        .update(account.toJson())
-        .eq('id', account.id);
+    final data = account.toJson();
+    try {
+      await _client
+          .from('users')
+          .update(data)
+          .eq('id', account.id);
+    } catch (e) {
+      if (e.toString().contains('is_passcode_enabled')) {
+        final fallbackData = Map<String, dynamic>.from(data)..remove('is_passcode_enabled');
+        await _client
+            .from('users')
+            .update(fallbackData)
+            .eq('id', account.id);
+      } else {
+        rethrow;
+      }
+    }
   }
 
   Future<void> updateUserFields(String userId, Map<String, dynamic> fields) async {

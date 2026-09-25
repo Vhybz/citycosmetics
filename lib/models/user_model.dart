@@ -40,6 +40,7 @@ class UserAccount {
   final bool lastPaymentWasAdvance;
   final String? passcode; // 4-digit security code
   final DateTime? passcodeSentAt; // When the code was last sent
+  final bool isPasscodeEnabled; // Whether user enables 4-digit PIN lock & switch
 
   // Theme preferences
   final String? themeMode; // 'light', 'dark', 'system'
@@ -77,6 +78,7 @@ class UserAccount {
     this.lastPaymentWasAdvance = false,
     this.passcode,
     this.passcodeSentAt,
+    this.isPasscodeEnabled = false,
     this.themeMode,
     this.themePrimaryColor,
     this.totalSalaryPaid = 0.0,
@@ -145,6 +147,10 @@ class UserAccount {
       lastPaymentWasAdvance: json['last_payment_was_advance'] == true,
       passcode: json['passcode']?.toString(),
       passcodeSentAt: safeDate(json['passcode_sent_at']),
+      isPasscodeEnabled: json['is_passcode_enabled'] == true ||
+          (json['is_passcode_enabled'] == null &&
+           json['passcode'] != null &&
+           json['passcode'].toString().trim().isNotEmpty),
       themeMode: json['theme_mode']?.toString(),
       themePrimaryColor: json['theme_primary_color'] != null ? int.tryParse(json['theme_primary_color'].toString()) : null,
       totalSalaryPaid: (json['total_salary_paid'] as num? ?? 0.0).toDouble(),
@@ -181,6 +187,7 @@ class UserAccount {
       'last_payment_was_advance': lastPaymentWasAdvance,
       'passcode': passcode,
       'passcode_sent_at': passcodeSentAt?.toIso8601String(),
+      'is_passcode_enabled': isPasscodeEnabled,
       'theme_mode': themeMode,
       'theme_primary_color': themePrimaryColor,
       'total_salary_paid': totalSalaryPaid,
@@ -247,6 +254,7 @@ class UserAccount {
     bool? lastPaymentWasAdvance,
     String? passcode,
     DateTime? passcodeSentAt,
+    bool? isPasscodeEnabled,
     String? themeMode,
     int? themePrimaryColor,
     double? totalSalaryPaid,
@@ -281,6 +289,7 @@ class UserAccount {
       lastPaymentWasAdvance: lastPaymentWasAdvance ?? this.lastPaymentWasAdvance,
       passcode: passcode ?? this.passcode,
       passcodeSentAt: passcodeSentAt ?? this.passcodeSentAt,
+      isPasscodeEnabled: isPasscodeEnabled ?? this.isPasscodeEnabled,
       themeMode: themeMode ?? this.themeMode,
       themePrimaryColor: themePrimaryColor ?? this.themePrimaryColor,
       totalSalaryPaid: totalSalaryPaid ?? this.totalSalaryPaid,

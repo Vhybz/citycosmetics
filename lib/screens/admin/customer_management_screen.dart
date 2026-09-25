@@ -15,6 +15,24 @@ import '../../core/uuid_utils.dart';
 import '../../models/customer_metrics.dart';
 import '../../services/customer_metrics_provider.dart';
 
+enum CustomerFilterType {
+  all,
+  special,
+  favorites,
+  wholesalers,
+  bulkPurchasers,
+  hasPoints,
+  frequent,
+}
+
+enum CustomerSortOption {
+  nameAsc,
+  nameDesc,
+  pointsDesc,
+  visitsDesc,
+  discountDesc,
+}
+
 class CustomerManagementScreen extends ConsumerStatefulWidget {
   const CustomerManagementScreen({super.key});
 
@@ -25,6 +43,9 @@ class CustomerManagementScreen extends ConsumerStatefulWidget {
 class _CustomerManagementScreenState extends ConsumerState<CustomerManagementScreen> {
   String _searchQuery = '';
   final TextEditingController _searchController = TextEditingController();
+  CustomerFilterType _selectedFilter = CustomerFilterType.all;
+  CustomerSortOption _selectedSort = CustomerSortOption.nameAsc;
+  String? _selectedLocation;
 
   @override
   void dispose() {
@@ -43,13 +64,89 @@ class _CustomerManagementScreenState extends ConsumerState<CustomerManagementScr
     final isDesktop = ResponsiveLayout.isDesktop(context);
     const currentRoute = '/admin/customers';
 
-    // Filter and sort customers
+    // Extract unique locations for filtering
+    final availableLocations = customers
+        .map((c) => c.location?.trim())
+        .where((loc) => loc != null && loc.isNotEmpty)
+        .cast<String>()
+        .toSet()
+        .toList()
+      ..sort();
+
+    // Counts for filter chips
+    final totalCount = customers.length;
+    final specialCount = customers.where((c) => c.isSpecial).length;
+    final favCount = customers.where((c) => c.isFavorite).length;
+    final wholesalerCount = customers.where((c) => c.isWholesaler).length;
+    final bulkCount = customers.where((c) => c.isBulkPurchaser).length;
+    final pointsCount = customers.where((c) => c.loyaltyPoints > 0).length;
+    final frequentCount = customers.where((c) => c.visitCount >= 3).length;
+
+    // Filter customers
     final filteredCustomers = customers.where((c) {
-      final query = _searchQuery.toLowerCase();
-      return c.name.toLowerCase().contains(query) || 
-             c.phone.contains(query) || 
-             (c.location?.toLowerCase().contains(query) ?? false);
-    }).toList()..sort((a, b) => a.name.toLowerCase().compareTo(b.name.toLowerCase()));
+      // 1. Search Query
+      final query = _searchQuery.trim().toLowerCase();
+      if (query.isNotEmpty) {
+        final matchesName = c.name.toLowerCase().contains(query);
+        final matchesPhone = c.phone.contains(query) || (c.phone2?.contains(query) ?? false);
+        final matchesLocation = c.location?.toLowerCase().contains(query) ?? false;
+        if (!matchesName && !matchesPhone && !matchesLocation) {
+          return false;
+        }
+      }
+
+      // 2. Type Filter Chip
+      switch (_selectedFilter) {
+        case CustomerFilterType.all:
+          break;
+        case CustomerFilterType.special:
+          if (!c.isSpecial) return false;
+          break;
+        case CustomerFilterType.favorites:
+          if (!c.isFavorite) return false;
+          break;
+        case CustomerFilterType.wholesalers:
+          if (!c.isWholesaler) return false;
+          break;
+        case CustomerFilterType.bulkPurchasers:
+          if (!c.isBulkPurchaser) return false;
+          break;
+        case CustomerFilterType.hasPoints:
+          if (c.loyaltyPoints <= 0) return false;
+          break;
+        case CustomerFilterType.frequent:
+          if (c.visitCount < 3) return false;
+          break;
+      }
+
+      // 3. Location Dropdown Filter
+      if (_selectedLocation != null && _selectedLocation!.isNotEmpty) {
+        if ((c.location?.trim() ?? '') != _selectedLocation) {
+          return false;
+        }
+      }
+
+      return true;
+    }).toList();
+
+    // Sorting
+    switch (_selectedSort) {
+      case CustomerSortOption.nameAsc:
+        filteredCustomers.sort((a, b) => a.name.toLowerCase().compareTo(b.name.toLowerCase()));
+        break;
+      case CustomerSortOption.nameDesc:
+        filteredCustomers.sort((a, b) => b.name.toLowerCase().compareTo(a.name.toLowerCase()));
+        break;
+      case CustomerSortOption.pointsDesc:
+        filteredCustomers.sort((a, b) => b.loyaltyPoints.compareTo(a.loyaltyPoints));
+        break;
+      case CustomerSortOption.visitsDesc:
+        filteredCustomers.sort((a, b) => b.visitCount.compareTo(a.visitCount));
+        break;
+      case CustomerSortOption.discountDesc:
+        filteredCustomers.sort((a, b) => (b.specialDiscountPercentage ?? 0).compareTo(a.specialDiscountPercentage ?? 0));
+        break;
+    }
 
     return RolePopScope(
       currentRoute: currentRoute,
@@ -85,7 +182,19 @@ class _CustomerManagementScreenState extends ConsumerState<CustomerManagementScr
                   children: [
                     _buildHeader(context, ref),
                     const SizedBox(height: AppSpacing.m),
-                    _buildSearchBar(context),
+                    _buildFilterAndSearchSection(
+                      context,
+                      theme,
+                      availableLocations,
+                      totalCount,
+                      specialCount,
+                      favCount,
+                      wholesalerCount,
+                      bulkCount,
+                      pointsCount,
+                      frequentCount,
+                      filteredCustomers.length,
+                    ),
                     const SizedBox(height: AppSpacing.xl),
                     _buildMetricsSummary(context, metrics),
                     const SizedBox(height: AppSpacing.xl),
@@ -100,33 +209,294 @@ class _CustomerManagementScreenState extends ConsumerState<CustomerManagementScr
     );
   }
 
-  Widget _buildSearchBar(BuildContext context) {
-    final theme = Theme.of(context);
-    return Container(
-      constraints: const BoxConstraints(maxWidth: 600),
-      child: TextField(
-        controller: _searchController,
-        onChanged: (value) => setState(() => _searchQuery = value),
-        decoration: InputDecoration(
-          hintText: 'Search by Name (e.g. John), Phone (e.g. 020) or Location...',
-          prefixIcon: const Icon(Icons.search),
-          suffixIcon: _searchQuery.isNotEmpty 
-            ? IconButton(
-                icon: const Icon(Icons.clear), 
-                onPressed: () {
-                  _searchController.clear();
-                  setState(() => _searchQuery = '');
-                }
-              ) 
-            : null,
-          filled: true,
-          fillColor: theme.cardTheme.color,
-          border: OutlineInputBorder(
-            borderRadius: BorderRadius.circular(AppRadius.m),
-            borderSide: BorderSide.none,
+  Widget _buildFilterAndSearchSection(
+    BuildContext context,
+    ThemeData theme,
+    List<String> locations,
+    int totalCount,
+    int specialCount,
+    int favCount,
+    int wholesalerCount,
+    int bulkCount,
+    int pointsCount,
+    int frequentCount,
+    int resultCount,
+  ) {
+    final isMobile = ResponsiveLayout.isMobile(context);
+    final bool hasActiveFilter = _selectedFilter != CustomerFilterType.all ||
+        _searchQuery.isNotEmpty ||
+        _selectedLocation != null ||
+        _selectedSort != CustomerSortOption.nameAsc;
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        // 1. Search Bar & Controls Row
+        Wrap(
+          spacing: 12,
+          runSpacing: 12,
+          crossAxisAlignment: WrapCrossAlignment.center,
+          children: [
+            // Search Input
+            SizedBox(
+              width: isMobile ? double.infinity : 380,
+              child: TextField(
+                controller: _searchController,
+                onChanged: (value) => setState(() => _searchQuery = value),
+                decoration: InputDecoration(
+                  hintText: 'Search by Name, Phone or Location...',
+                  prefixIcon: const Icon(Icons.search, size: 20),
+                  suffixIcon: _searchQuery.isNotEmpty
+                      ? IconButton(
+                          icon: const Icon(Icons.clear, size: 18),
+                          onPressed: () {
+                            _searchController.clear();
+                            setState(() => _searchQuery = '');
+                          },
+                        )
+                      : null,
+                  filled: true,
+                  fillColor: theme.cardTheme.color,
+                  isDense: true,
+                  contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+                  border: OutlineInputBorder(
+                    borderRadius: BorderRadius.circular(AppRadius.m),
+                    borderSide: BorderSide(color: theme.dividerColor.withValues(alpha: 0.2)),
+                  ),
+                ),
+              ),
+            ),
+
+            // Sort Dropdown
+            SizedBox(
+              width: isMobile ? (locations.isNotEmpty ? 175 : double.infinity) : 200,
+              child: DropdownButtonFormField<CustomerSortOption>(
+                initialValue: _selectedSort,
+                isExpanded: true,
+                isDense: true,
+                decoration: InputDecoration(
+                  labelText: 'Sort By',
+                  prefixIcon: const Icon(Icons.sort_rounded, size: 18),
+                  prefixIconConstraints: const BoxConstraints(minWidth: 34, minHeight: 34),
+                  filled: true,
+                  fillColor: theme.cardTheme.color,
+                  contentPadding: const EdgeInsets.symmetric(horizontal: 8, vertical: 8),
+                  border: OutlineInputBorder(
+                    borderRadius: BorderRadius.circular(AppRadius.m),
+                    borderSide: BorderSide(color: theme.dividerColor.withValues(alpha: 0.2)),
+                  ),
+                ),
+                style: TextStyle(fontSize: 12, color: theme.colorScheme.onSurface),
+                items: const [
+                  DropdownMenuItem(value: CustomerSortOption.nameAsc, child: Text('Name (A-Z)', overflow: TextOverflow.ellipsis)),
+                  DropdownMenuItem(value: CustomerSortOption.nameDesc, child: Text('Name (Z-A)', overflow: TextOverflow.ellipsis)),
+                  DropdownMenuItem(value: CustomerSortOption.pointsDesc, child: Text('Most Points', overflow: TextOverflow.ellipsis)),
+                  DropdownMenuItem(value: CustomerSortOption.visitsDesc, child: Text('Most Visits', overflow: TextOverflow.ellipsis)),
+                  DropdownMenuItem(value: CustomerSortOption.discountDesc, child: Text('Highest VIP %', overflow: TextOverflow.ellipsis)),
+                ],
+                onChanged: (val) {
+                  if (val != null) setState(() => _selectedSort = val);
+                },
+              ),
+            ),
+
+            // Location Filter Dropdown
+            if (locations.isNotEmpty)
+              SizedBox(
+                width: isMobile ? 175 : 200,
+                child: DropdownButtonFormField<String?>(
+                  initialValue: _selectedLocation,
+                  isExpanded: true,
+                  isDense: true,
+                  decoration: InputDecoration(
+                    labelText: 'Location',
+                    prefixIcon: const Icon(Icons.location_on_outlined, size: 18),
+                    prefixIconConstraints: const BoxConstraints(minWidth: 34, minHeight: 34),
+                    filled: true,
+                    fillColor: theme.cardTheme.color,
+                    contentPadding: const EdgeInsets.symmetric(horizontal: 8, vertical: 8),
+                    border: OutlineInputBorder(
+                      borderRadius: BorderRadius.circular(AppRadius.m),
+                      borderSide: BorderSide(color: theme.dividerColor.withValues(alpha: 0.2)),
+                    ),
+                  ),
+                  style: TextStyle(fontSize: 12, color: theme.colorScheme.onSurface),
+                  items: [
+                    const DropdownMenuItem<String?>(
+                      value: null, 
+                      child: Text('All Locations', overflow: TextOverflow.ellipsis),
+                    ),
+                    ...locations.map(
+                      (loc) => DropdownMenuItem<String?>(
+                        value: loc,
+                        child: Text(loc, overflow: TextOverflow.ellipsis),
+                      ),
+                    ),
+                  ],
+                  onChanged: (val) => setState(() => _selectedLocation = val),
+                ),
+              ),
+          ],
+        ),
+
+        const SizedBox(height: 12),
+
+        // 2. Filter Chips Row
+        SingleChildScrollView(
+          scrollDirection: Axis.horizontal,
+          child: Row(
+            children: [
+              _buildFilterChip(
+                label: 'All Customers',
+                count: totalCount,
+                icon: Icons.people_alt_rounded,
+                selected: _selectedFilter == CustomerFilterType.all,
+                color: theme.colorScheme.primary,
+                onSelected: () => setState(() => _selectedFilter = CustomerFilterType.all),
+              ),
+              const SizedBox(width: 8),
+              _buildFilterChip(
+                label: 'Special VIP',
+                count: specialCount,
+                icon: Icons.star_rounded,
+                selected: _selectedFilter == CustomerFilterType.special,
+                color: Colors.amber,
+                onSelected: () => setState(() => _selectedFilter = _selectedFilter == CustomerFilterType.special ? CustomerFilterType.all : CustomerFilterType.special),
+              ),
+              const SizedBox(width: 8),
+              _buildFilterChip(
+                label: 'Favorites',
+                count: favCount,
+                icon: Icons.favorite_rounded,
+                selected: _selectedFilter == CustomerFilterType.favorites,
+                color: Colors.deepOrangeAccent,
+                onSelected: () => setState(() => _selectedFilter = _selectedFilter == CustomerFilterType.favorites ? CustomerFilterType.all : CustomerFilterType.favorites),
+              ),
+              const SizedBox(width: 8),
+              _buildFilterChip(
+                label: 'Wholesalers',
+                count: wholesalerCount,
+                icon: Icons.store_rounded,
+                selected: _selectedFilter == CustomerFilterType.wholesalers,
+                color: Colors.purpleAccent,
+                onSelected: () => setState(() => _selectedFilter = _selectedFilter == CustomerFilterType.wholesalers ? CustomerFilterType.all : CustomerFilterType.wholesalers),
+              ),
+              const SizedBox(width: 8),
+              _buildFilterChip(
+                label: 'Bulk Buyers',
+                count: bulkCount,
+                icon: Icons.inventory_2_outlined,
+                selected: _selectedFilter == CustomerFilterType.bulkPurchasers,
+                color: Colors.teal,
+                onSelected: () => setState(() => _selectedFilter = _selectedFilter == CustomerFilterType.bulkPurchasers ? CustomerFilterType.all : CustomerFilterType.bulkPurchasers),
+              ),
+              const SizedBox(width: 8),
+              _buildFilterChip(
+                label: 'Loyalty Points',
+                count: pointsCount,
+                icon: Icons.loyalty_rounded,
+                selected: _selectedFilter == CustomerFilterType.hasPoints,
+                color: Colors.blueAccent,
+                onSelected: () => setState(() => _selectedFilter = _selectedFilter == CustomerFilterType.hasPoints ? CustomerFilterType.all : CustomerFilterType.hasPoints),
+              ),
+              const SizedBox(width: 8),
+              _buildFilterChip(
+                label: 'Frequent (3+)',
+                count: frequentCount,
+                icon: Icons.repeat_rounded,
+                selected: _selectedFilter == CustomerFilterType.frequent,
+                color: Colors.green,
+                onSelected: () => setState(() => _selectedFilter = _selectedFilter == CustomerFilterType.frequent ? CustomerFilterType.all : CustomerFilterType.frequent),
+              ),
+            ],
           ),
         ),
+
+        // 3. Active filter summary & Clear button
+        if (hasActiveFilter) ...[
+          const SizedBox(height: 8),
+          Row(
+            children: [
+              Text(
+                'Showing $resultCount of $totalCount customers',
+                style: TextStyle(fontSize: 11, fontWeight: FontWeight.w600, color: theme.colorScheme.onSurfaceVariant),
+              ),
+              const SizedBox(width: 8),
+              InkWell(
+                onTap: () {
+                  setState(() {
+                    _selectedFilter = CustomerFilterType.all;
+                    _selectedSort = CustomerSortOption.nameAsc;
+                    _selectedLocation = null;
+                    _searchQuery = '';
+                    _searchController.clear();
+                  });
+                },
+                borderRadius: BorderRadius.circular(4),
+                child: Padding(
+                  padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                  child: Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Icon(Icons.close, size: 14, color: theme.colorScheme.error),
+                      const SizedBox(width: 2),
+                      Text(
+                        'Reset Filters',
+                        style: TextStyle(fontSize: 11, color: theme.colorScheme.error, fontWeight: FontWeight.bold),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+            ],
+          ),
+        ],
+      ],
+    );
+  }
+
+  Widget _buildFilterChip({
+    required String label,
+    required int count,
+    required IconData icon,
+    required bool selected,
+    required Color color,
+    required VoidCallback onSelected,
+  }) {
+    return FilterChip(
+      avatar: Icon(icon, size: 14, color: selected ? Colors.white : color),
+      label: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Text(label),
+          const SizedBox(width: 4),
+          Container(
+            padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 1),
+            decoration: BoxDecoration(
+              color: selected ? Colors.white.withValues(alpha: 0.25) : color.withValues(alpha: 0.12),
+              borderRadius: BorderRadius.circular(10),
+            ),
+            child: Text(
+              '$count',
+              style: TextStyle(
+                fontSize: 10,
+                fontWeight: FontWeight.bold,
+                color: selected ? Colors.white : color,
+              ),
+            ),
+          ),
+        ],
       ),
+      selected: selected,
+      onSelected: (_) => onSelected(),
+      selectedColor: color,
+      labelStyle: TextStyle(
+        fontSize: 11,
+        fontWeight: selected ? FontWeight.bold : FontWeight.normal,
+        color: selected ? Colors.white : null,
+      ),
+      padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 2),
+      visualDensity: VisualDensity.compact,
     );
   }
 
@@ -251,11 +621,31 @@ class _CustomerManagementScreenState extends ConsumerState<CustomerManagementScr
                         child: Column(
                           crossAxisAlignment: CrossAxisAlignment.start,
                           children: [
-                            Text(
-                              c.name, 
-                              style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 14),
-                              maxLines: 1,
-                              overflow: TextOverflow.ellipsis,
+                            Row(
+                              children: [
+                                Flexible(
+                                  child: Text(
+                                    c.name, 
+                                    style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 14),
+                                    maxLines: 1,
+                                    overflow: TextOverflow.ellipsis,
+                                  ),
+                                ),
+                                if (c.isSpecial)
+                                  Container(
+                                    margin: const EdgeInsets.only(left: 6),
+                                    padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 1.5),
+                                    decoration: BoxDecoration(
+                                      color: Colors.amber.withValues(alpha: 0.2),
+                                      borderRadius: BorderRadius.circular(4),
+                                      border: Border.all(color: Colors.amber.shade700, width: 0.8),
+                                    ),
+                                    child: Text(
+                                      '⭐ SPECIAL${c.specialDiscountPercentage != null ? " • ${c.specialDiscountPercentage!.toStringAsFixed(0)}%" : ""}',
+                                      style: TextStyle(fontSize: 8, fontWeight: FontWeight.bold, color: Colors.amber.shade900),
+                                    ),
+                                  ),
+                              ],
                             ),
                             if (m != null)
                               Row(
@@ -291,6 +681,8 @@ class _CustomerManagementScreenState extends ConsumerState<CustomerManagementScr
                         onSelected: (val) {
                           if (val == 'fav') {
                             ref.read(customerProvider.notifier).toggleFavorite(c.id);
+                          } else if (val == 'special') {
+                            ref.read(customerProvider.notifier).toggleSpecial(c.id);
                           } else if (val == 'edit') {
                             _showEditCustomerDialog(context, ref, c);
                           } else if (val == 'del') {
@@ -299,6 +691,7 @@ class _CustomerManagementScreenState extends ConsumerState<CustomerManagementScr
                         },
                         itemBuilder: (context) => [
                           PopupMenuItem(value: 'fav', child: Text(c.isFavorite ? 'Remove Favorite' : 'Mark as Favorite')),
+                          PopupMenuItem(value: 'special', child: Text(c.isSpecial ? 'Remove Special (VIP)' : 'Mark as Special Customer')),
                           const PopupMenuItem(value: 'edit', child: Text('Edit Details')),
                           const PopupMenuItem(value: 'del', child: Text('Delete Record', style: TextStyle(color: Colors.red))),
                         ],
@@ -421,6 +814,10 @@ class _CustomerManagementScreenState extends ConsumerState<CustomerManagementScr
     bool isFavorite = customer.isFavorite;
     bool isBulkPurchaser = customer.isBulkPurchaser;
     bool isWholesaler = customer.isWholesaler;
+    bool isSpecial = customer.isSpecial;
+    final discountController = TextEditingController(
+      text: customer.specialDiscountPercentage != null ? customer.specialDiscountPercentage!.toString() : '',
+    );
     final theme = Theme.of(context);
 
     showDialog(
@@ -488,6 +885,30 @@ class _CustomerManagementScreenState extends ConsumerState<CustomerManagementScr
                     activeColor: theme.colorScheme.primary,
                     contentPadding: EdgeInsets.zero,
                   ),
+                  CheckboxListTile(
+                    title: const Text('Special Customer (VIP)'),
+                    subtitle: const Text('Eligible for exclusive discounts and promotions'),
+                    value: isSpecial,
+                    onChanged: (val) => setState(() => isSpecial = val ?? false),
+                    activeColor: Colors.amber.shade800,
+                    contentPadding: EdgeInsets.zero,
+                  ),
+                  if (isSpecial) ...[
+                    const SizedBox(height: 8),
+                    TextFormField(
+                      controller: discountController,
+                      decoration: const InputDecoration(
+                        labelText: 'Special Discount Percentage (%)',
+                        hintText: 'e.g. 10 or 15',
+                        prefixIcon: Icon(Icons.percent_rounded),
+                        border: OutlineInputBorder(),
+                      ),
+                      keyboardType: const TextInputType.numberWithOptions(decimal: true),
+                      inputFormatters: [
+                        FilteringTextInputFormatter.allow(RegExp(r'^\d*\.?\d*')),
+                      ],
+                    ),
+                  ],
                   const SizedBox(height: 8),
                   const Text('Customer Category', style: TextStyle(fontSize: 10, fontWeight: FontWeight.bold, color: Colors.grey)),
                   const SizedBox(height: 4),
@@ -527,6 +948,8 @@ class _CustomerManagementScreenState extends ConsumerState<CustomerManagementScr
                     isFavorite: isFavorite,
                     isBulkPurchaser: isBulkPurchaser,
                     isWholesaler: isWholesaler,
+                    isSpecial: isSpecial,
+                    specialDiscountPercentage: isSpecial ? double.tryParse(discountController.text.trim()) : null,
                   );
                   
                   try {
@@ -564,6 +987,8 @@ class _CustomerManagementScreenState extends ConsumerState<CustomerManagementScr
     bool isFavorite = false;
     bool isBulkPurchaser = false;
     bool isWholesaler = false;
+    bool isSpecial = false;
+    final discountController = TextEditingController();
     final theme = Theme.of(context);
 
     showDialog(
@@ -631,6 +1056,30 @@ class _CustomerManagementScreenState extends ConsumerState<CustomerManagementScr
                     activeColor: theme.colorScheme.primary,
                     contentPadding: EdgeInsets.zero,
                   ),
+                  CheckboxListTile(
+                    title: const Text('Special Customer (VIP)'),
+                    subtitle: const Text('Eligible for exclusive discounts and promotions'),
+                    value: isSpecial,
+                    onChanged: (val) => setState(() => isSpecial = val ?? false),
+                    activeColor: Colors.amber.shade800,
+                    contentPadding: EdgeInsets.zero,
+                  ),
+                  if (isSpecial) ...[
+                    const SizedBox(height: 8),
+                    TextFormField(
+                      controller: discountController,
+                      decoration: const InputDecoration(
+                        labelText: 'Special Discount Percentage (%)',
+                        hintText: 'e.g. 10 or 15',
+                        prefixIcon: Icon(Icons.percent_rounded),
+                        border: OutlineInputBorder(),
+                      ),
+                      keyboardType: const TextInputType.numberWithOptions(decimal: true),
+                      inputFormatters: [
+                        FilteringTextInputFormatter.allow(RegExp(r'^\d*\.?\d*')),
+                      ],
+                    ),
+                  ],
                   const SizedBox(height: 8),
                   const Text('Customer Category', style: TextStyle(fontSize: 10, fontWeight: FontWeight.bold, color: Colors.grey)),
                   const SizedBox(height: 4),
@@ -673,6 +1122,8 @@ class _CustomerManagementScreenState extends ConsumerState<CustomerManagementScr
                     isFavorite: isFavorite,
                     isBulkPurchaser: isBulkPurchaser,
                     isWholesaler: isWholesaler,
+                    isSpecial: isSpecial,
+                    specialDiscountPercentage: isSpecial ? double.tryParse(discountController.text.trim()) : null,
                   );
                   
                   try {

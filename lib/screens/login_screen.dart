@@ -83,6 +83,14 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
 
         // Successful login
         ref.read(currentUserIdProvider.notifier).state = userAccount.id;
+        ref.read(sessionUserProfileProvider.notifier).state = userAccount;
+
+        // If passcode is enabled and configured, lock account and require 4-digit PIN on entry
+        if (userAccount.isPasscodeEnabled && userAccount.passcode != null && userAccount.passcode!.isNotEmpty) {
+          ref.read(passcodeUnlockedProvider.notifier).state = false;
+        } else {
+          ref.read(passcodeUnlockedProvider.notifier).state = true;
+        }
 
         // 3. Log Audit Event
         await AuditService.log(
