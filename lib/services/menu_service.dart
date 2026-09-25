@@ -143,10 +143,10 @@ class MenuService {
         ]);
       } else {
         items.add(SidebarItem(
-          icon: Icons.restaurant_rounded, 
-          label: 'Butcher Operations', 
-          route: '/butcher', 
-          isCatchy: user.newlyAddedPermissions.contains('/butcher'),
+          icon: Icons.warehouse_rounded, 
+          label: 'Warehouse Operations', 
+          route: '/warehouse', 
+          isCatchy: user.newlyAddedPermissions.contains('/warehouse') || user.newlyAddedPermissions.contains('/butcher'),
         ));
       }
     }

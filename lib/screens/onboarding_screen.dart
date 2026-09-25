@@ -14,10 +14,10 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
 
   final List<OnboardingData> _pages = [
     OnboardingData(
-      title: 'Smart Butchery',
-      subtitle: '21ST CENTURY INNOVATION',
-      description: 'Experience world-class "Farm to Fork" traceability. Know exactly where your meat comes from.',
-      icon: Icons.auto_awesome_rounded,
+      title: 'Smart Cosmetics POS',
+      subtitle: '21ST CENTURY BEAUTY RETAIL',
+      description: 'Streamline cosmetic sales, track stock, and manage your beauty store effortlessly.',
+      icon: Icons.face_retouching_natural_rounded,
       color: AppColors.primaryMaroon,
       bgAsset: 'assets/images/bgi/img11.png',
     ),
@@ -103,10 +103,10 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
               children: [
                 const Row(
                   children: [
-                    Icon(Icons.restaurant_rounded, color: Colors.white, size: 24),
+                    Icon(Icons.store_rounded, color: Colors.white, size: 24),
                     SizedBox(width: 8),
                     Text(
-                      'Mi~CORAZON',
+                      'CITY COSMETICS',
                       style: TextStyle(
                         color: Colors.white,
                         fontWeight: FontWeight.w900,

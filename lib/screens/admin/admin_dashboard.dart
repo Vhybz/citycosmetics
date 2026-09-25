@@ -11,8 +11,8 @@ import '../../services/expense_provider.dart';
 import '../../models/sale_model.dart';
 import '../../services/notification_service.dart';
 import '../../services/product_service.dart';
-import '../../services/butcher_service.dart';
-import '../../models/butcher_models.dart';
+import '../../services/warehouse_service.dart';
+import '../../models/warehouse_models.dart';
 import '../../models/system_models.dart';
 
 import '../../services/menu_service.dart';
@@ -220,7 +220,7 @@ class _AdminDashboardState extends ConsumerState<AdminDashboard> {
           _buildActionSection(
             context,
             ref,
-            title: 'Butcher Unit Reports',
+            title: 'Warehouse Unit Reports',
             icon: Icons.warning_amber_rounded,
             color: Colors.red,
             items: butcherReports,
@@ -588,7 +588,7 @@ class _AdminDashboardState extends ConsumerState<AdminDashboard> {
                     ),
                   ),
                   Text(
-                    'Unforgettable Taste from Mi~Corazon',
+                    'Quality Beauty Products from City Cosmetics',
                     style: TextStyle(
                       color: Colors.white70,
                       fontSize: isMobile ? 12 : 16,
@@ -637,8 +637,7 @@ class _AdminDashboardState extends ConsumerState<AdminDashboard> {
             maxLines: 1,
             overflow: TextOverflow.ellipsis,
           ),
-          if (branch != null)
-             Text('${branch.name} - ${branch.location}', style: TextStyle(color: theme.colorScheme.primary, fontWeight: FontWeight.bold, fontSize: 12)),
+          _buildBranchSelector(context, ref, user, branch),
           const SizedBox(height: 4),
           Text(dateStr, style: TextStyle(color: theme.colorScheme.onSurfaceVariant, fontSize: 12)),
           const SizedBox(height: AppSpacing.m),
@@ -660,8 +659,7 @@ class _AdminDashboardState extends ConsumerState<AdminDashboard> {
                 maxLines: 1,
                 overflow: TextOverflow.ellipsis,
               ),
-              if (branch != null)
-                 Text('${branch.name} - ${branch.location}', style: TextStyle(color: theme.colorScheme.primary, fontWeight: FontWeight.bold, fontSize: 14)),
+              _buildBranchSelector(context, ref, user, branch),
               const SizedBox(height: 4),
               Row(
                 children: [
@@ -682,6 +680,147 @@ class _AdminDashboardState extends ConsumerState<AdminDashboard> {
         const SizedBox(width: 16),
         _buildActionButtons(context, ref, false),
       ],
+    );
+  }
+
+  Widget _buildBranchSelector(BuildContext context, WidgetRef ref, UserAccount user, Branch? branch) {
+    final theme = Theme.of(context);
+    final isAllowedToSwitch = user.activeRoles.contains(UserRole.admin) || 
+                              user.activeRoles.contains(UserRole.superAdmin) || 
+                              user.enabledPermissions.contains('/admin/branch-switch');
+
+    final String branchLabel = branch != null 
+        ? '${branch.name} (${branch.location})' 
+        : (user.branchCode ?? 'Select Branch');
+
+    return InkWell(
+      onTap: isAllowedToSwitch ? () => _showBranchSwitchDialog(context, ref, user) : null,
+      borderRadius: BorderRadius.circular(AppRadius.s),
+      child: Container(
+        margin: const EdgeInsets.symmetric(vertical: 4),
+        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+        decoration: BoxDecoration(
+          color: theme.colorScheme.primary.withValues(alpha: 0.1),
+          borderRadius: BorderRadius.circular(AppRadius.s),
+          border: Border.all(color: theme.colorScheme.primary.withValues(alpha: 0.3)),
+        ),
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Icon(Icons.store_rounded, size: 16, color: theme.colorScheme.primary),
+            const SizedBox(width: 6),
+            Text(
+              branchLabel,
+              style: TextStyle(
+                color: theme.colorScheme.primary,
+                fontWeight: FontWeight.bold,
+                fontSize: 12,
+              ),
+            ),
+            if (isAllowedToSwitch) ...[
+              const SizedBox(width: 6),
+              Container(
+                padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                decoration: BoxDecoration(
+                  color: theme.colorScheme.primary,
+                  borderRadius: BorderRadius.circular(4),
+                ),
+                child: const Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Text('Switch', style: TextStyle(color: Colors.white, fontSize: 10, fontWeight: FontWeight.bold)),
+                    SizedBox(width: 2),
+                    Icon(Icons.swap_horiz_rounded, size: 12, color: Colors.white),
+                  ],
+                ),
+              ),
+            ],
+          ],
+        ),
+      ),
+    );
+  }
+
+  void _showBranchSwitchDialog(BuildContext context, WidgetRef ref, UserAccount user) {
+    final theme = Theme.of(context);
+    final branchesAsync = ref.read(branchesProvider);
+
+    showDialog(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: Row(
+          children: [
+            Icon(Icons.storefront_rounded, color: theme.colorScheme.primary),
+            const SizedBox(width: 10),
+            const Text('Switch Active Branch'),
+          ],
+        ),
+        content: SizedBox(
+          width: 400,
+          child: branchesAsync.when(
+            data: (branches) {
+              if (branches.isEmpty) {
+                return const Padding(
+                  padding: EdgeInsets.all(16.0),
+                  child: Text('No branches available.'),
+                );
+              }
+              return ListView.separated(
+                shrinkWrap: true,
+                itemCount: branches.length,
+                separatorBuilder: (_, __) => const Divider(height: 1),
+                itemBuilder: (context, index) {
+                  final b = branches[index];
+                  final isCurrent = b.code == user.branchCode;
+
+                  return ListTile(
+                    leading: CircleAvatar(
+                      backgroundColor: isCurrent ? theme.colorScheme.primary : Colors.grey.shade200,
+                      child: Icon(
+                        Icons.business_rounded, 
+                        color: isCurrent ? Colors.white : Colors.grey.shade700,
+                      ),
+                    ),
+                    title: Text(b.name, style: TextStyle(fontWeight: isCurrent ? FontWeight.bold : FontWeight.normal)),
+                    subtitle: Text('${b.location} • Code: ${b.code}'),
+                    trailing: isCurrent 
+                        ? const Icon(Icons.check_circle_rounded, color: Colors.green) 
+                        : const Icon(Icons.arrow_forward_ios_rounded, size: 14),
+                    onTap: () {
+                      if (!isCurrent) {
+                        final updatedUser = user.copyWith(branchCode: b.code);
+                        ref.read(sessionUserProfileProvider.notifier).state = updatedUser;
+                        
+                        Navigator.pop(context);
+                        ScaffoldMessenger.of(context).showSnackBar(
+                          SnackBar(
+                            content: Text('Switched view to ${b.name} (${b.location})'),
+                            backgroundColor: theme.colorScheme.primary,
+                            duration: const Duration(seconds: 2),
+                          ),
+                        );
+                      } else {
+                        Navigator.pop(context);
+                      }
+                    },
+                  );
+                },
+              );
+            },
+            loading: () => const SizedBox(
+              height: 100,
+              child: Center(child: CircularProgressIndicator()),
+            ),
+            error: (err, _) => Text('Error loading branches: $err'),
+          ),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: const Text('CANCEL'),
+          ),
+        ],
+      ),
     );
   }
 
@@ -1969,7 +2108,7 @@ class _AdminDashboardState extends ConsumerState<AdminDashboard> {
                       )),
                       ...unreadButcherReports.map((n) => _alertTile(
                         context,
-                        'Butcher Unit Report', 
+                        'Warehouse Unit Report', 
                         n.message, 
                         Colors.red, 
                         Icons.warning_amber

@@ -250,7 +250,7 @@ class SettingsScreen extends ConsumerWidget {
                         
                         const SizedBox(height: 40),
                         Center(
-                          child: Text('Version 1.0.0+1 • Butchery ERP Enterprise', 
+                          child: Text('Version 1.0.0+1 • Cosmetics POS Enterprise', 
                             style: TextStyle(fontSize: 10, color: theme.colorScheme.onSurfaceVariant.withValues(alpha: 0.5))),
                         ),
                         const SizedBox(height: 40),

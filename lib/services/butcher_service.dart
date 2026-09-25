@@ -337,7 +337,7 @@ class MeatBatchNotifier extends StateNotifier<AsyncValue<List<MeatBatch>>> {
         source: BatchSource(
           name: 'Direct Slaughter',
           location: branchCode,
-          owner: 'Mi~Corazon',
+          owner: 'City Cosmetics',
         ),
         portionedBy: user?.name,
       );
@@ -435,7 +435,7 @@ class MeatBatchNotifier extends StateNotifier<AsyncValue<List<MeatBatch>>> {
         costPrice: log.farmPrice ?? 0.0,
         createdAt: DateTime.now(),
         status: MeatBatchStatus.preparing.name,
-        source: BatchSource(name: 'Direct Slaughter', location: branchCode, owner: 'Mi~Corazon'),
+        source: BatchSource(name: 'Direct Slaughter', location: branchCode, owner: 'City Cosmetics'),
         receivedBy: receivedBy,
       );
 

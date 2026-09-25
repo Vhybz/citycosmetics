@@ -215,7 +215,7 @@ class _SignupScreenState extends ConsumerState<SignupScreen> {
                             ),
                           ),
                           Text(
-                            'Apply for a Mi~Corazon team account',
+                            'Apply for a City Cosmetics team account',
                             textAlign: TextAlign.center,
                             style: TextStyle(color: theme.colorScheme.onSurfaceVariant, fontSize: 12),
                           ),

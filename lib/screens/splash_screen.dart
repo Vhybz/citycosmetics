@@ -196,19 +196,19 @@ class _SplashScreenState extends ConsumerState<SplashScreen> with SingleTickerPr
                       child: const Column(
                         children: [
                           Text(
-                            'Mi~CORAZON',
+                            'CITY COSMETICS',
                             style: TextStyle(
                               color: Colors.white,
-                              fontSize: 32,
+                              fontSize: 30,
                               fontWeight: FontWeight.bold,
-                              letterSpacing: 4,
+                              letterSpacing: 3,
                             ),
                           ),
                           Text(
-                            'FRESHMEAT BUTCHERY',
+                            'BEAUTY & COSMETICS POS',
                             style: TextStyle(
                               color: Colors.white,
-                              fontSize: 16,
+                              fontSize: 14,
                               fontWeight: FontWeight.w500,
                               letterSpacing: 2,
                             ),
@@ -241,7 +241,7 @@ class _SplashScreenState extends ConsumerState<SplashScreen> with SingleTickerPr
                           ),
                           const SizedBox(height: 8),
                           Text(
-                            'Preparing Fresh Cuts... ${(_progressAnimation.value * 100).toInt()}%',
+                            'Loading Cosmetic POS... ${(_progressAnimation.value * 100).toInt()}%',
                             style: TextStyle(
                               color: Colors.white.withValues(alpha: 0.6),
                               fontSize: 11,

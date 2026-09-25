@@ -163,12 +163,12 @@ class _AppSidebarState extends ConsumerState<AppSidebar> {
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 Text(
-                  'Mi~CORAZON',
+                  'CITY COSMETICS',
                   style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 16),
                   overflow: TextOverflow.ellipsis,
                 ),
                 Text(
-                  'Butchery System',
+                  'Cosmetics POS System',
                   style: TextStyle(color: Colors.white70, fontSize: 10, letterSpacing: 0.5),
                   overflow: TextOverflow.ellipsis,
                 ),

@@ -95,7 +95,7 @@ class _SystemSettingsScreenState extends ConsumerState<SystemSettingsScreen> {
                           'Shop Identification',
                           Icons.business_rounded,
                           [
-                            _settingTile(context, Icons.store_rounded, 'Branch Name', currentBranch?.name ?? 'Mi~CORAZON FRESHMEAT BUTCHERY'),
+                            _settingTile(context, Icons.store_rounded, 'Branch Name', currentBranch?.name ?? 'CITY COSMETICS POS'),
                             _settingTile(context, Icons.location_on_rounded, 'Branch Location', currentBranch?.location ?? 'HQ'),
                             _settingTile(context, Icons.gps_fixed_rounded, 'Digital Address (GPS)', 'BS-0006-1566'),
                             _settingTile(context, Icons.phone_android_rounded, 'Emergency Contacts', '0209276200 / 0243672146'),
@@ -168,7 +168,7 @@ class _SystemSettingsScreenState extends ConsumerState<SystemSettingsScreen> {
             style: TextStyle(color: Colors.white, fontSize: 24, fontWeight: FontWeight.bold),
           ),
           Text(
-            'Configure global parameters, branding, and theme for Mi~Corazon.',
+            'Configure global parameters, branding, and theme for City Cosmetics.',
             style: TextStyle(color: Colors.white.withValues(alpha: 0.9), fontSize: 13),
           ),
         ],
@@ -425,7 +425,7 @@ class _SystemSettingsScreenState extends ConsumerState<SystemSettingsScreen> {
           ),
           const SizedBox(height: 12),
           Text(
-            'Mi~Corazon Freshmeat Butchery Management',
+            'City Cosmetics POS Management',
             style: TextStyle(color: theme.colorScheme.onSurface, fontWeight: FontWeight.bold, fontSize: 14),
           ),
           Text(

@@ -4,7 +4,7 @@ import 'package:flutter/foundation.dart';
 import 'dart:async';
 import '../core/supabase_config.dart';
 
-/// This service manages the "Offline-First" logic for Mi~Corazon.
+/// This service manages the "Offline-First" logic for City Cosmetics POS.
 /// It uses Hive as a fast, schema-less storage for pending cloud actions.
 class OfflineSyncService {
   static const String queueBoxName = 'sync_queue';

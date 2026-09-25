@@ -1,13 +1,13 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:mi_corazon/models/user_model.dart';
-import 'package:mi_corazon/services/user_provider.dart';
-import 'package:mi_corazon/core/constants.dart';
-import 'package:mi_corazon/widgets/staff_switch_sheet.dart';
-import 'package:mi_corazon/services/auth_provider.dart';
+import 'package:citypos/models/user_model.dart';
+import 'package:citypos/services/user_provider.dart';
+import 'package:citypos/core/constants.dart';
+import 'package:citypos/widgets/staff_switch_sheet.dart';
+import 'package:citypos/services/auth_provider.dart';
 
-export 'package:mi_corazon/services/user_provider.dart' show passcodeUnlockedProvider;
+export 'package:citypos/services/user_provider.dart' show passcodeUnlockedProvider;
 
 class PasscodeGuard extends ConsumerStatefulWidget {
   final Widget child;

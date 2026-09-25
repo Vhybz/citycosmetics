@@ -45,7 +45,7 @@ QueryExecutor _openConnection() {
   return LazyDatabase(() async {
     if (kIsWeb) {
       final result = await WasmDatabase.open(
-        databaseName: 'mi_corazon_db',
+        databaseName: 'city_cosmetics_db',
         sqlite3Uri: Uri.parse('sqlite3.wasm'),
         driftWorkerUri: Uri.parse('drift_worker.js'),
       );

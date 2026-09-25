@@ -64,7 +64,7 @@ class RolePopScope extends ConsumerWidget {
     return showDialog<bool>(
       context: context,
       builder: (context) => AlertDialog(
-        title: const Text('Exit Mi~Corazon?'),
+        title: const Text('Exit City Cosmetics POS?'),
         content: const Text('Are you sure you want to close the application?'),
         actions: [
           TextButton(

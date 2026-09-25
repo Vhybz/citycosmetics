@@ -396,7 +396,7 @@ class ReportService {
               children: [
                 pw.Text('HEALTH INSPECTION CERTIFICATE', style: pw.TextStyle(fontSize: 24, fontWeight: pw.FontWeight.bold, color: _primaryMaroon)),
                 pw.SizedBox(height: 20),
-                pw.Text('This is to certify that Mi~Corazon Freshmeat Butchery has passed all health and hygiene standards for the year 2024.', textAlign: pw.TextAlign.center),
+                pw.Text('This is to certify that City Cosmetics POS has passed all health and hygiene standards for the year 2024.', textAlign: pw.TextAlign.center),
                 pw.SizedBox(height: 40),
                 pw.Text('Status: VERIFIED', style: pw.TextStyle(fontWeight: pw.FontWeight.bold, color: PdfColors.green)),
                 pw.SizedBox(height: 60),
@@ -594,8 +594,8 @@ class ReportService {
             pw.Column(
               crossAxisAlignment: pw.CrossAxisAlignment.start,
               children: [
-                pw.Text('Mi~CORAZON FRESHMEAT BUTCHERY', style: pw.TextStyle(fontWeight: pw.FontWeight.bold, fontSize: 18, color: _primaryMaroon)),
-                pw.Text('Quality Meat Service • Ghana', style: const pw.TextStyle(fontSize: 10)),
+                pw.Text('CITY COSMETICS POS', style: pw.TextStyle(fontWeight: pw.FontWeight.bold, fontSize: 18, color: _primaryMaroon)),
+                pw.Text('Quality Beauty & Cosmetics Service • Ghana', style: const pw.TextStyle(fontSize: 10)),
               ],
             ),
             pw.Column(

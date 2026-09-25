@@ -212,7 +212,7 @@ class _MainAppBarState extends ConsumerState<MainAppBar> with SingleTickerProvid
     final currentBranch = ref.watch(currentBranchProvider);
     final String branchText = currentBranch != null 
         ? '${currentBranch.name} (${currentBranch.location})'
-        : (user?.branchCode ?? 'Mi~Corazon Butchery');
+        : (user?.branchCode ?? 'City Cosmetics');
 
     return Column(
       key: const ValueKey('brand_info'),

@@ -28,7 +28,7 @@ import 'screens/admin/product_activity_report_screen.dart';
 import 'screens/butcher/documents_screen.dart';
 import 'screens/cashier/cashier_pos.dart';
 import 'screens/cashier/stock_verification_screen.dart';
-import 'screens/butcher/butcher_shell.dart';
+import 'screens/warehouse/warehouse_shell.dart';
 import 'screens/settings_screen.dart';
 import 'screens/profile_screen.dart';
 import 'screens/about_screen.dart';
@@ -93,7 +93,7 @@ void main() async {
     
     runApp(
       const ProviderScope(
-        child: MeatShopApp(),
+        child: CityCosmeticsApp(),
       ),
     );
   } catch (e, stack) {
@@ -299,8 +299,8 @@ void _showManualConfigDialog(BuildContext context) {
   );
 }
 
-class MeatShopApp extends ConsumerWidget {
-  const MeatShopApp({super.key});
+class CityCosmeticsApp extends ConsumerWidget {
+  const CityCosmeticsApp({super.key});
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
@@ -309,7 +309,7 @@ class MeatShopApp extends ConsumerWidget {
     ref.watch(syncProvider);
 
     return MaterialApp(
-      title: 'Mi~Corazon Freshmeat Butchery',
+      title: 'City Cosmetics POS',
       debugShowCheckedModeBanner: false,
       theme: AppTheme.getLightTheme(themeState.primaryColor),
       darkTheme: AppTheme.getDarkTheme(themeState.primaryColor),
@@ -342,7 +342,8 @@ class MeatShopApp extends ConsumerWidget {
         '/about': (context) => const AboutScreen(),
         '/cashier': (context) => const CashierPOS(),
         '/cashier/verify-stock': (context) => const StockVerificationScreen(),
-        '/butcher': (context) => const ButcherShell(),
+        '/warehouse': (context) => const WarehouseShell(),
+        '/butcher': (context) => const WarehouseShell(),
       },
     );
   }

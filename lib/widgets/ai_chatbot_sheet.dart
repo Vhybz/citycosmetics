@@ -17,7 +17,7 @@ class _AiChatbotSheetState extends ConsumerState<AiChatbotSheet> {
   final List<Map<String, dynamic>> _messages = [
     {
       'role': 'ai',
-      'text': 'Hello! I am your Mi~Corazon AI Assistant. How can I help you today?',
+      'text': 'Hello! I am your City Cosmetics AI Assistant. How can I help you today?',
       'time': DateTime.now(),
     }
   ];
@@ -101,7 +101,7 @@ class _AiChatbotSheetState extends ConsumerState<AiChatbotSheet> {
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
                       Text(
-                        'Mi~Corazon AI',
+                        'City Cosmetics AI',
                         style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 16),
                       ),
                       Text(

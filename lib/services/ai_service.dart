@@ -75,7 +75,7 @@ class AiService {
 
     String roleSpecificInstructions = "";
     if (role == UserRole.butcher) {
-      roleSpecificInstructions = "SOP: Record Farm Price, weigh parts accurately (90-100% yield), and attach barcodes.";
+      roleSpecificInstructions = "SOP: Manage stock inventory, inspect product batches, and attach barcodes.";
     } else if (role == UserRole.cashier) {
       roleSpecificInstructions = "SOP: Scan barcodes to verify stock, manage debts via customer profiles, and process Bank Deposits carefully.";
     } else if (role == UserRole.admin || role == UserRole.superAdmin) {
@@ -83,11 +83,11 @@ class AiService {
     }
 
     return """
-    You are the Mi~Corazon AI Assistant for a modern butchery in Sunyani, Ghana.
+    You are the City Cosmetics AI Assistant for a modern cosmetics store in Sunyani, Ghana.
     User: $name ($roleName).
     
     RULES:
-    1. Be a professional partner for this butchery.
+    1. Be a professional partner for this cosmetics store.
     2. $roleSpecificInstructions
     3. Use local context (MoMo, GHS, Sunyani).
     4. Keep answers short and practical.

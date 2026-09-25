@@ -1,7 +1,7 @@
 class AppStrings {
   // Login Screen
-  static const String loginTitle = 'Mi~CORAZON';
-  static const String loginSubtitle = 'FRESHMEAT BUTCHERY';
+  static const String loginTitle = 'CITY COSMETICS';
+  static const String loginSubtitle = 'BEAUTY & COSMETICS POS';
   static const String signInHeader = 'Sign in to your account';
   static const String emailLabel = 'Email Address';
   static const String passwordLabel = 'Password';

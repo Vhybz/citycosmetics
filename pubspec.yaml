@@ -1,5 +1,5 @@
-name: mi_corazon
-description: "Mi~Corazon Freshmeat Butchery Management System"
+name: citypos
+description: "City Cosmetics Point of Sale System"
 publish_to: 'none'
 
 version: 1.0.0+1
@@ -50,9 +50,9 @@ dev_dependencies:
   msix: ^3.16.1
 
 msix_config:
-  display_name: Mi~Corazon Butchery
-  publisher_display_name: Mi~Corazon Freshmeat
-  title_bar_background_color: "#6B1111"
+  display_name: City Cosmetics POS
+  publisher_display_name: City Cosmetics
+  title_bar_background_color: "#D81B60"
   logo_path: assets/logo/logo.jpg
   capabilities: internetClient, location, privateNetworkClientServer
   store: false

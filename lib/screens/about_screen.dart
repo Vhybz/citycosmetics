@@ -133,7 +133,7 @@ class AboutScreen extends ConsumerWidget {
                     mainAxisSize: MainAxisSize.min,
                     children: [
                       Text(
-                        'Mi~Corazon',
+                        'City Cosmetics',
                         style: TextStyle(
                           fontSize: 32, 
                           fontWeight: FontWeight.w900, 
@@ -144,7 +144,7 @@ class AboutScreen extends ConsumerWidget {
                         maxLines: 1,
                       ),
                       Text(
-                        'The Future of Butchery Management',
+                        'Beauty & Cosmetics Management POS',
                         style: TextStyle(
                           fontSize: 14, 
                           color: AppColors.textLight, 
@@ -166,7 +166,7 @@ class AboutScreen extends ConsumerWidget {
             ),
             const SizedBox(height: 16),
             Text(
-              'Mi~Corazon is a full-stack digital solution meticulously crafted to solve the unique challenges of the meat processing and retail industry. We bridge the gap between complex operational logistics and simple, high-speed retail execution.',
+              'City Cosmetics POS is a full-stack digital solution meticulously crafted to solve the unique challenges of cosmetic shops and beauty retail. We bridge the gap between inventory tracking and simple, high-speed retail execution.',
               style: TextStyle(
                 fontSize: 16, 
                 height: 1.6, 
@@ -280,7 +280,7 @@ class AboutScreen extends ConsumerWidget {
               ),
               const SizedBox(height: 8),
               const Text(
-                '"My objective with Mi~Corazon was to create a system that doesn\'t just record data, but actively protects and grows the business. I believe that engineering excellence should be invisible—allowing the business to operate with absolute precision while the staff focuses on quality service."',
+                '"My objective with City Cosmetics POS was to create a system that doesn\'t just record data, but actively protects and grows the business. I believe that engineering excellence should be invisible—allowing the business to operate with absolute precision while the staff focuses on quality service."',
                 style: TextStyle(color: Colors.white70, height: 1.6, fontSize: 15, fontStyle: FontStyle.italic),
               ),
             ],
@@ -347,7 +347,7 @@ class AboutScreen extends ConsumerWidget {
       child: Column(
         children: [
           Text(
-            'MI~CORAZON v2.1.0-STABLE',
+            'CITY COSMETICS POS v2.1.0-STABLE',
             style: TextStyle(fontSize: 12, color: AppColors.textLight, fontWeight: FontWeight.bold, letterSpacing: 1),
           ),
           SizedBox(height: 6),

@@ -3724,7 +3724,7 @@ class _ReceiptSuccessDialogState extends State<ReceiptSuccessDialog> {
                 ),
                 child: Column(
                   children: [
-                    const Text('Mi CORAZON', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16, letterSpacing: 1)),
+                    const Text('CITY COSMETICS', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16, letterSpacing: 1)),
                     const Text('Digital Copy', style: TextStyle(fontSize: 10, color: Colors.grey)),
                     if (widget.sale.balance > 0.01)
                       Container(
