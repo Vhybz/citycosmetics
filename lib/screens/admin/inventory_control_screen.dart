@@ -283,7 +283,7 @@ class _InventoryControlScreenState extends ConsumerState<InventoryControlScreen>
               context: context,
               builder: (context) => AlertDialog(
                 title: const Text('Initialize Catalog?'),
-                content: const Text('This will add all default products (Cow, Pork, Hard Chicken (Layer)/Soft Chicken (Broiler), etc.) with 0.0 quantity if they don\'t exist. Continue?'),
+                content: const Text('This will initialize your store catalog with 111 default cosmetic products across Creams & Lotions, Haircare, Shower Gels, Perfumes, and Facial Care. Continue?'),
                 actions: [
                   TextButton(onPressed: () => Navigator.pop(context, false), child: const Text('CANCEL')),
                   ElevatedButton(onPressed: () => Navigator.pop(context, true), child: const Text('INITIALIZE')),

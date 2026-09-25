@@ -117,15 +117,15 @@ class WarehouseShell extends ConsumerWidget {
   Widget _buildSidebar(WidgetRef ref, WarehouseScreen current, UserAccount user, BuildContext context) {
     const currentRoute = '/warehouse';
     final menuItems = [
-      SidebarItem(icon: Icons.dashboard_rounded, title: 'Dashboard', route: 'warehouse:dashboard'),
-      SidebarItem(icon: Icons.move_to_inbox_rounded, title: 'Shipment Intake', route: 'warehouse:shipmentIntake'),
-      SidebarItem(icon: Icons.inventory_2_rounded, title: 'Stock Processing', route: 'warehouse:warehouseProcessing'),
-      SidebarItem(icon: Icons.unarchive_rounded, title: 'Bulk Unboxing', route: 'warehouse:bulkBreakdown'),
-      SidebarItem(icon: Icons.local_shipping_rounded, title: 'Stock Dispatch', route: 'warehouse:stockDispatch'),
-      SidebarItem(icon: Icons.warehouse_rounded, title: 'Warehouse Stock', route: 'warehouse:inventory'),
-      SidebarItem(icon: Icons.shopping_bag_rounded, title: 'Shop Requests', route: 'warehouse:orders'),
-      SidebarItem(icon: Icons.report_problem_rounded, title: 'Damaged Stock', route: 'warehouse:damageManagement'),
-      SidebarItem(icon: Icons.assessment_rounded, title: 'Reports', route: 'warehouse:reports'),
+      SidebarItem(icon: Icons.dashboard_rounded, label: 'Dashboard', route: 'warehouse:dashboard'),
+      SidebarItem(icon: Icons.move_to_inbox_rounded, label: 'Shipment Intake', route: 'warehouse:shipmentIntake'),
+      SidebarItem(icon: Icons.inventory_2_rounded, label: 'Stock Processing', route: 'warehouse:warehouseProcessing'),
+      SidebarItem(icon: Icons.unarchive_rounded, label: 'Bulk Unboxing', route: 'warehouse:bulkBreakdown'),
+      SidebarItem(icon: Icons.local_shipping_rounded, label: 'Stock Dispatch', route: 'warehouse:stockDispatch'),
+      SidebarItem(icon: Icons.warehouse_rounded, label: 'Warehouse Stock', route: 'warehouse:inventory'),
+      SidebarItem(icon: Icons.shopping_bag_rounded, label: 'Shop Requests', route: 'warehouse:orders'),
+      SidebarItem(icon: Icons.report_problem_rounded, label: 'Damaged Stock', route: 'warehouse:damageManagement'),
+      SidebarItem(icon: Icons.assessment_rounded, label: 'Reports', route: 'warehouse:reports'),
     ];
 
     return AppSidebar(

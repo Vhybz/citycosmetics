@@ -12,6 +12,7 @@ import '../../models/sale_model.dart';
 import '../../services/notification_service.dart';
 import '../../services/product_service.dart';
 import '../../services/warehouse_service.dart';
+import '../../services/butcher_service.dart';
 import '../../models/warehouse_models.dart';
 import '../../models/system_models.dart';
 
@@ -1718,7 +1719,7 @@ class _AdminDashboardState extends ConsumerState<AdminDashboard> {
 
     final dailyCounts = last7Days.map((date) {
       return logs.where((l) {
-        final logDate = l.slaughterTime ?? DateTime.now();
+        final logDate = l.arrivalDate;
         return logDate.year == date.year && logDate.month == date.month && logDate.day == date.day;
       }).length;
     }).toList();

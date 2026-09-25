@@ -1,6 +1,5 @@
 import '../core/uuid_utils.dart';
 import '../models/product.dart';
-import '../models/butcher_models.dart';
 import 'product_service.dart';
 import 'user_provider.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -17,66 +16,139 @@ class ProductSeeder {
     
     final List<Map<String, List<String>>> data = [
       {
-        'HARD CHICKEN (LAYER)': [
-          'Hard Whole Chicken (Layer)',
-          'Hard Thigh (Layer)',
-          'Hard Breast (Layer)',
-          'Hard Back (Layer)',
-          'Hard Wings (Layer)',
-          'Hard Drumsticks (Layer)',
-          'Gizzard'
+        'CREAMS & LOTIONS': [
+          'EVERSHEEN CREAM B/S',
+          'EVERSHEEN CREAM S/S',
+          'QUEEN CREAM B/S',
+          'QUEEN CREAM M/S',
+          'TENDRINA CREAM B/S',
+          'BELLA LOT B/S',
+          'CAROTONE LOT B/S',
+          'CAROTONE LOT M/S',
+          'PAWPAW LOT M/S',
+          'DAY BY DAY MEN B/S',
+          'CLINIC CLEAR LOT B/S',
+          'CLINIC CLEAR LOT S/S',
+          'WHITE SECRETE LOTION BS',
+          'WHITE SECRET LOT MS',
+          'WHITE SECRETE LOT SS',
+          'COCOA CARE LOT B/S',
+          'COCOA CARE LOT S/S',
+          'SISTER CREAM B/S',
+          'SISTER CREAM M/S',
+          'CLAIRLISS CREAM B/S',
+          'HABIBA B/S',
+          'HABIBA S/S',
+          'CAROTONE CREAM B/S',
+          'BLUE SEAL VASE B/S',
+          'BLUE SEAL CRM S/S',
+          'SKIN SUCCESS LOTION',
+          'PALMERS LOT B/S',
+          'PALMERS THERAPY OIL',
+          'NIVEA COCOA LOT',
+          'NIVEA FAIRNS LOT',
+          'NIVEA Q10',
+          'NIVEA RADIANT AND BEAUTY L',
+          'NIVEA DEEP LOT',
+          'NIVEA NOURIS LOT',
+          'NIVEA CREAM SOFT',
+          'CLAIRMEN LOT B/S',
+          'CLAIRMEN LOT M/S',
+          'CARO WHITE LOT B/S',
+          'CARO WHITE LOT M/S',
+          'ALWAYS YOUNG CREAM',
         ]
       },
       {
-        'SOFT CHICKEN (BROILER)': [
-          'Soft Whole Chicken (Broiler)',
-          'Soft Thigh (Broiler)',
-          'Soft Breast (Broiler)',
-          'Soft Back (Broiler)',
-          'Soft Wings (Broiler)',
-          'Soft Drumsticks (Broiler)',
-          'Gizzard'
+        'HAIRCARE & RELAXERS': [
+          'BO 16 HAIR MIST B/S',
+          'BO 16 HAIR MIST S/S',
+          'COLORANT DYE',
+          'FUNBACT BLISS',
+          'EASY WAVES RELAXER B/S',
+          'SPORTING POMADE',
+          'SHEA 14 APPS',
+          'SHEA BLISS APP',
+          'OLIVE 15 APP',
+          'MEGA 12 APPS ANTI BREAKAGE',
+          'BROOKLYN KIT 12 APPS',
+          'BROOKLYN 6APPS',
+          'DARK AND LOVELY KIT',
+          'UB RELAXER BS',
+          'UB FLAT',
+          'UB M/S',
+          'BO16 B/S',
+          'BO16 F/S',
+          'BO 16 M/S',
+          'VITAL HAIR FOOD B/S',
+          'VITAL HAIR FOOD M/S',
+          'APPLE HAIR FOOD M/S',
+          'CHAP HAIR FOOD M/S',
+          'RASTA COOL',
+          'MASS STYL GEL BS',
+          'DAY BY DAY POMADE',
+          'ECO GEL B/S',
+          'ECO GEL M/S',
+          'ECO GEL S/S',
         ]
       },
       {
-        'COW': [ 
-          'Offals / Yemadeɛ', 'Feet', 'Head'
+        'SHOWER GELS & BATHS': [
+          'DR TEALS BODY WASH',
+          'FRUSIER BATH',
+          'KLEAN BATH',
+          'IMAN BATH',
+          'MAKARI BATH',
+          'BISSMID BATH',
+          'CARO WHITE BATH B/S',
+          'CLAIRMEN BATH B/S',
+          'PERFECT WHITE BATH B/S',
+          'GLUTA WHITE BATH',
+          'G7 BATH',
+          'PERFECT GLOW BATH',
+          'DES BATH B/S',
+          'FAIR CHILD BATH',
         ]
       },
       {
-        'BEEF': [
-          'Standard Meat', 'Boneless', 'Cow Steak', 'Liver & Lungs', 
-          'Grounded Meat', 'Tail / Padua'
+        'PERFUMES & SPRAYS': [
+          'ELEMENT PERF',
+          'COLOUR ME SPRAY',
+          'BERRIES WEEKEND PERFUME',
+          'OPHELIA SP',
+          'X BLOCK',
+          'NIVEA SPRAY 200ML',
+          'NIVEA DRY CONF ROI',
+          'CONET ROLL ON',
+          'POWER ROLL ON',
+          'DOVE SPRAY',
+          'SURE SPRAY',
+          'RIGHT GUARD SPRAY NP',
+          'V1 SPRAY',
+          'SENS SPRAY',
+          'TOUCH SPRAY',
+          'REXONA SURE SPRAY',
         ]
       },
       {
-        'GOAT': [
-          'Standard Meat', 'Boneless', 'Offals / Yemadeɛ', 'Head', 'Feet'
+        'FACIAL CARE': [
+          'ABANA FACIAL CREAM',
+          'WHITE SECRET FACIAL',
+          'DES FACIAL',
+          'BB CLEAR FACIAL',
+          'PAPAYA FACIAL',
+          'GREEN TEA FACIAL',
+          'AILKE FACIAL',
         ]
       },
       {
-        'SHEEP': [
-          'Standard Meat', 'Boneless', 'Offals / Yemadeɛ', 'Head', 'Feet'
+        'PETROLEUM JELLY & SOAPS': [
+          'PRINCESS COCOA PAA B/S',
+          'COCOA PAA M/S',
+          'ALOE PAA M/S',
+          'PRINCESS CARROT PAA B/S',
+          'PRINCESS CARROT PAA M/S',
         ]
-      },
-      {
-        'PORK': [
-          'Standard Meat', 'Boneless Meat', 'Offals / Yemadeɛ', 'Pork Steak',
-          'Head', 'Ear', 'Feet', 'Liver', 'Skin'
-        ]
-      },
-      {
-        'TURKEY': [
-          'Whole Turkey', 'Breast', 'Thighs', 'Drumsticks', 'Wings', 'Gizzards', 'Feet'
-        ]
-      },
-      {
-        'RABBIT': [
-          'Whole Rabbit', 'Legs', 'Saddle', 'Shoulders'
-        ]
-      },
-      {
-        'FEEDS': ['Dog Feed']
       }
     ];
 
@@ -89,61 +161,24 @@ class ProductSeeder {
       final productNames = categoryMap.values.first;
 
       for (var name in productNames) {
-        final bool isChicken = category == 'HARD CHICKEN (LAYER)' || category == 'SOFT CHICKEN (BROILER)';
+        if (existingNames.contains(name.toLowerCase())) continue;
+
+        final String validUuid = UuidUtils.generate();
+
+        final product = Product(
+          id: validUuid,
+          branchCode: user.branchCode,
+          name: name,
+          retailPrice: 0.0,
+          wholesalePrice: 0.0,
+          costPrice: 0.0,
+          imageUrl: '', 
+          category: category,
+          stockQuantity: 50.0, // Default seed quantity
+          unit: 'pcs',
+        );
         
-        if (isChicken && name.toUpperCase() != 'GIZZARD') {
-          // Special handling for chicken parts - Create separate cards for each weight range
-          final bool isHard = category == 'HARD CHICKEN (LAYER)';
-          final type = isHard ? AnimalType.hardChicken : AnimalType.softChicken;
-          final ranges = type.chickenRanges;
-
-          for (var range in ranges) {
-            final rangeName = '$name (${range.label})';
-            if (existingNames.contains(rangeName.toLowerCase())) continue;
-
-            // Only set price automatically for Whole Chickens
-            final double initialPrice = name.contains('Whole') ? range.price : 0.0;
-            final String validUuid = UuidUtils.generate();
-
-            final product = Product(
-              id: validUuid,
-              branchCode: user.branchCode,
-              name: rangeName,
-              retailPrice: initialPrice,
-              wholesalePrice: 0.0,
-              costPrice: 0.0,
-              imageUrl: '', 
-              category: category,
-              stockQuantity: 0.0,
-              unit: name.contains('Whole') ? 'unit' : 'kg',
-            );
-            await service.addProduct(product);
-          }
-        } else {
-          // Standard single card seeding for other items
-          if (existingNames.contains(name.toLowerCase())) continue;
-
-          final String validUuid = UuidUtils.generate();
-
-          final product = Product(
-            id: validUuid,
-            branchCode: user.branchCode,
-            name: name,
-            retailPrice: 0.0,
-            wholesalePrice: 0.0,
-            costPrice: 0.0,
-            imageUrl: '', 
-            category: category,
-            stockQuantity: 0.0,
-            unit: (name.contains('Whole') || 
-                   category == 'TURKEY' || 
-                   category == 'RABBIT') 
-                  ? 'unit' 
-                  : 'kg',
-          );
-          
-          await service.addProduct(product);
-        }
+        await service.addProduct(product);
       }
     }
   }

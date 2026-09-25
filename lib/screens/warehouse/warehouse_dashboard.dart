@@ -86,29 +86,33 @@ class WarehouseDashboard extends ConsumerWidget {
                 physics: const NeverScrollableScrollPhysics(),
                 childAspectRatio: 1.5,
                 children: [
-                  KpiCard(
+                  KPICard(
                     title: 'Total Shipments',
                     value: '$totalShipments',
                     icon: Icons.local_shipping_rounded,
-                    color: Colors.blue,
+                    iconColor: Colors.blue,
+                    iconBgColor: Colors.blue.withValues(alpha: 0.1),
                   ),
-                  KpiCard(
+                  KPICard(
                     title: 'Pending Unboxing',
                     value: '$pendingCount',
                     icon: Icons.inventory_2_rounded,
-                    color: Colors.orange,
+                    iconColor: Colors.orange,
+                    iconBgColor: Colors.orange.withValues(alpha: 0.1),
                   ),
-                  KpiCard(
+                  KPICard(
                     title: 'Warehouse Items',
                     value: '1,240',
                     icon: Icons.inventory_rounded,
-                    color: Colors.green,
+                    iconColor: Colors.green,
+                    iconBgColor: Colors.green.withValues(alpha: 0.1),
                   ),
-                  KpiCard(
+                  KPICard(
                     title: 'Branch Dispatches',
                     value: '18 Today',
                     icon: Icons.outbox_rounded,
-                    color: Colors.purple,
+                    iconColor: Colors.purple,
+                    iconBgColor: Colors.purple.withValues(alpha: 0.1),
                   ),
                 ],
               );
