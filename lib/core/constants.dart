@@ -1,17 +1,18 @@
 import 'package:flutter/material.dart';
 
 class AppColors {
-  static const Color primaryMaroon = Color(0xFF4A0808); // Deeper Maroon
-  static const Color primaryPink = Color(0xFF880E4F); // Deeper Pink
-  static const Color primaryBlue = Color(0xFF0D47A1); // Deeper Blue
-  static const Color primaryGreen = Color(0xFF1B5E20); // Deeper Green
-  static const Color secondaryMaroon = Color(0xFF380606); // Extremely Deep
-  static const Color surfaceWhite = Color(0xFFECEFF1); // Deeper Surface
-  static const Color textDark = Color(0xFF121212); // Deeper Text
-  static const Color textLight = Color(0xFF455A64); // Deeper Gray
-  static const Color accentGreen = Color(0xFF1B5E20);
-  static const Color accentOrange = Color(0xFFE65100);
-  static const Color borderGray = Color(0xFFCFD8DC); // Deeper Borders
+  static const Color primaryBlueBlack = Color(0xFF0F172A); // Midnight Blue-Black
+  static const Color primaryMaroon = Color(0xFF0F172A); // Default primary theme color (BlueBlack)
+  static const Color primaryPink = Color(0xFF1E293B); // Deep Blue Navy
+  static const Color primaryBlue = Color(0xFF1D4ED8); // Vivid Blue
+  static const Color primaryGreen = Color(0xFF059669); // Emerald Green
+  static const Color secondaryMaroon = Color(0xFF020617); // Ultra Deep Blue-Black
+  static const Color surfaceWhite = Color(0xFFF1F5F9); // Clean Surface
+  static const Color textDark = Color(0xFF0F172A); // Dark Slate Text
+  static const Color textLight = Color(0xFF64748B); // Slate Gray
+  static const Color accentGreen = Color(0xFF10B981);
+  static const Color accentOrange = Color(0xFFF59E0B);
+  static const Color borderGray = Color(0xFFE2E8F0); // Subtle Border
   static const Color cardShadow = Color(0x1A000000);
 }
 

@@ -13,7 +13,7 @@ import '../../services/notification_service.dart';
 import '../../services/product_service.dart';
 import '../../services/warehouse_service.dart';
 import '../../services/butcher_service.dart';
-import '../../models/warehouse_models.dart';
+import '../../models/warehouse_models.dart' hide SlaughterLog;
 import '../../models/system_models.dart';
 
 import '../../services/menu_service.dart';
@@ -1707,7 +1707,7 @@ class _AdminDashboardState extends ConsumerState<AdminDashboard> {
     }
   }
 
-  Widget _buildSlaughterTrendChart(BuildContext context, List<SlaughterLog> logs) {
+  Widget _buildSlaughterTrendChart(BuildContext context, List<dynamic> logs) {
     final theme = Theme.of(context);
     final isDark = theme.brightness == Brightness.dark;
     
@@ -1719,7 +1719,7 @@ class _AdminDashboardState extends ConsumerState<AdminDashboard> {
 
     final dailyCounts = last7Days.map((date) {
       return logs.where((l) {
-        final logDate = l.arrivalDate;
+        final logDate = l.slaughterTime ?? l.arrivalDate ?? DateTime.now();
         return logDate.year == date.year && logDate.month == date.month && logDate.day == date.day;
       }).length;
     }).toList();

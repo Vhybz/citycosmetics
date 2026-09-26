@@ -4,7 +4,7 @@ import 'dart:async';
 import '../services/auth_provider.dart';
 import '../services/user_provider.dart';
 import '../models/user_model.dart';
-import '../widgets/butcher_loading.dart';
+import '../core/constants.dart';
 
 class SplashScreen extends ConsumerStatefulWidget {
   const SplashScreen({super.key});
@@ -34,7 +34,7 @@ class _SplashScreenState extends ConsumerState<SplashScreen> with SingleTickerPr
     
     _scaleAnimation = CurvedAnimation(
       parent: _controller,
-      curve: const Interval(0.0, 0.3, curve: Curves.elasticOut),
+      curve: const Interval(0.0, 0.35, curve: Curves.elasticOut),
     );
 
     _progressAnimation = Tween<double>(begin: 0.0, end: 1.0).animate(
@@ -73,7 +73,6 @@ class _SplashScreenState extends ConsumerState<SplashScreen> with SingleTickerPr
         ref.read(currentUserIdProvider.notifier).state = currentUser.id;
         
         try {
-          // Add a timeout to prevent hanging on Splash if network is slow/blocked
           final users = await ref.read(userProvider.notifier).service.getUsers()
               .timeout(const Duration(seconds: 3));
               
@@ -132,29 +131,51 @@ class _SplashScreenState extends ConsumerState<SplashScreen> with SingleTickerPr
 
   @override
   Widget build(BuildContext context) {
-    final theme = Theme.of(context);
+    const blueBlack = AppColors.primaryBlueBlack; // Color(0xFF0F172A)
+    const darkNavy = Color(0xFF020617);
+
     return Scaffold(
-      backgroundColor: theme.colorScheme.primary,
+      backgroundColor: blueBlack,
       resizeToAvoidBottomInset: false,
       body: Container(
         width: double.infinity,
         height: double.infinity,
-        decoration: BoxDecoration(
+        decoration: const BoxDecoration(
           gradient: LinearGradient(
             begin: Alignment.topCenter,
             end: Alignment.bottomCenter,
-            colors: [
-              theme.colorScheme.primary,
-              HSLColor.fromColor(theme.colorScheme.primary).withLightness(0.15).toColor(),
-            ],
+            colors: [blueBlack, darkNavy],
           ),
         ),
         child: Stack(
           alignment: Alignment.center,
           children: [
-            _buildDecor(top: -100, left: -100, size: 300),
-            _buildDecor(bottom: -50, right: -50, size: 200),
-            
+            // Soft geometric glowing circles (No background images)
+            Positioned(
+              top: -80,
+              right: -80,
+              child: Container(
+                width: 280,
+                height: 280,
+                decoration: BoxDecoration(
+                  shape: BoxShape.circle,
+                  color: Colors.blueAccent.withValues(alpha: 0.05),
+                ),
+              ),
+            ),
+            Positioned(
+              bottom: -60,
+              left: -60,
+              child: Container(
+                width: 240,
+                height: 240,
+                decoration: BoxDecoration(
+                  shape: BoxShape.circle,
+                  color: Colors.indigoAccent.withValues(alpha: 0.05),
+                ),
+              ),
+            ),
+
             AnimatedBuilder(
               animation: _controller,
               builder: (context, child) {
@@ -166,19 +187,19 @@ class _SplashScreenState extends ConsumerState<SplashScreen> with SingleTickerPr
                       child: ScaleTransition(
                         scale: _scaleAnimation,
                         child: Container(
-                          width: 140,
-                          height: 140,
+                          width: 130,
+                          height: 130,
                           decoration: BoxDecoration(
                             color: Colors.white,
                             shape: BoxShape.circle,
                             boxShadow: [
                               BoxShadow(
-                                color: Colors.black.withValues(alpha: 0.3),
-                                blurRadius: 20,
-                                offset: const Offset(0, 10),
+                                color: Colors.blueAccent.withValues(alpha: 0.25),
+                                blurRadius: 30,
+                                spreadRadius: 5,
                               ),
                             ],
-                            border: Border.all(color: Colors.white.withValues(alpha: 0.2), width: 6),
+                            border: Border.all(color: Colors.white.withValues(alpha: 0.2), width: 4),
                           ),
                           child: ClipOval(
                             child: Image.asset(
@@ -189,7 +210,7 @@ class _SplashScreenState extends ConsumerState<SplashScreen> with SingleTickerPr
                         ),
                       ),
                     ),
-                    const SizedBox(height: 30),
+                    const SizedBox(height: 28),
                     
                     FadeTransition(
                       opacity: _fadeAnimation,
@@ -199,35 +220,45 @@ class _SplashScreenState extends ConsumerState<SplashScreen> with SingleTickerPr
                             'CITY COSMETICS',
                             style: TextStyle(
                               color: Colors.white,
-                              fontSize: 30,
-                              fontWeight: FontWeight.bold,
-                              letterSpacing: 3,
+                              fontSize: 28,
+                              fontWeight: FontWeight.w900,
+                              letterSpacing: 2.5,
                             ),
                           ),
+                          SizedBox(height: 4),
                           Text(
-                            'BEAUTY & COSMETICS POS',
+                            'SMART POS & INVENTORY SYSTEM',
                             style: TextStyle(
-                              color: Colors.white,
-                              fontSize: 14,
-                              fontWeight: FontWeight.w500,
-                              letterSpacing: 2,
+                              color: Colors.blueAccent,
+                              fontSize: 12,
+                              fontWeight: FontWeight.w600,
+                              letterSpacing: 1.8,
                             ),
                           ),
                         ],
                       ),
                     ),
                     
-                    const SizedBox(height: 50),
-                    
+                    const SizedBox(height: 60),
+
+                    // Modern Ring Loading Animation
                     FadeTransition(
                       opacity: _fadeAnimation,
-                      child: const ButcherLoading(size: 160),
+                      child: SizedBox(
+                        width: 48,
+                        height: 48,
+                        child: CircularProgressIndicator(
+                          strokeWidth: 3,
+                          valueColor: const AlwaysStoppedAnimation<Color>(Colors.blueAccent),
+                          backgroundColor: Colors.white.withValues(alpha: 0.1),
+                        ),
+                      ),
                     ),
 
-                    const SizedBox(height: 20),
+                    const SizedBox(height: 32),
                     
                     SizedBox(
-                      width: 200,
+                      width: 220,
                       child: Column(
                         children: [
                           ClipRRect(
@@ -235,13 +266,13 @@ class _SplashScreenState extends ConsumerState<SplashScreen> with SingleTickerPr
                             child: LinearProgressIndicator(
                               value: _progressAnimation.value,
                               backgroundColor: Colors.white.withValues(alpha: 0.1),
-                              valueColor: const AlwaysStoppedAnimation<Color>(Colors.white),
+                              valueColor: const AlwaysStoppedAnimation<Color>(Colors.blueAccent),
                               minHeight: 4,
                             ),
                           ),
-                          const SizedBox(height: 8),
+                          const SizedBox(height: 10),
                           Text(
-                            'Loading Cosmetic POS... ${(_progressAnimation.value * 100).toInt()}%',
+                            'Initializing System... ${(_progressAnimation.value * 100).toInt()}%',
                             style: TextStyle(
                               color: Colors.white.withValues(alpha: 0.6),
                               fontSize: 11,
@@ -257,23 +288,6 @@ class _SplashScreenState extends ConsumerState<SplashScreen> with SingleTickerPr
               },
             ),
           ],
-        ),
-      ),
-    );
-  }
-
-  Widget _buildDecor({double? top, double? left, double? right, double? bottom, required double size}) {
-    return Positioned(
-      top: top,
-      left: left,
-      right: right,
-      bottom: bottom,
-      child: Container(
-        width: size,
-        height: size,
-        decoration: BoxDecoration(
-          shape: BoxShape.circle,
-          color: Colors.white.withValues(alpha: 0.03),
         ),
       ),
     );
