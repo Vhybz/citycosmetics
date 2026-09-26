@@ -185,16 +185,20 @@ class _InventoryControlScreenState extends ConsumerState<InventoryControlScreen>
           ),
         ),
         SizedBox(
-          width: isMobile ? double.infinity : 200,
+          width: isMobile ? double.infinity : 220,
           child: DropdownButtonFormField<String>(
             initialValue: categories.contains(_selectedCategory) ? _selectedCategory : 'All',
+            isExpanded: true,
             decoration: InputDecoration(
               labelText: 'Sort Category',
               filled: true,
               fillColor: theme.cardTheme.color,
               border: OutlineInputBorder(borderRadius: BorderRadius.circular(AppRadius.m)),
             ),
-            items: categories.map((c) => DropdownMenuItem(value: c, child: Text(c, overflow: TextOverflow.ellipsis))).toList(),
+            items: categories.map((c) => DropdownMenuItem(
+              value: c, 
+              child: Text(c, overflow: TextOverflow.ellipsis, maxLines: 1),
+            )).toList(),
             onChanged: (v) => setState(() => _selectedCategory = v!),
           ),
         ),
@@ -920,42 +924,47 @@ class _InventoryControlScreenState extends ConsumerState<InventoryControlScreen>
     final customNameController = TextEditingController();
     final theme = Theme.of(context);
 
-    String selectedCategory = 'Cow';
+    String selectedCategory = 'Skincare';
     String? selectedProductName;
-    WeightUnit selectedUnit = WeightUnit.kg;
+    WeightUnit selectedUnit = WeightUnit.pcs;
     bool isUnlimited = false;
-    ChickenRange? selectedRange;
 
     final Map<String, List<String>> categoryProductMap = {
-      'Hard Chicken (Layer)': [
-        'Hard Whole Chicken (Layer)', 'Hard Thigh (Layer)', 'Hard Breast (Layer)', 
-        'Hard Back (Layer)', 'Hard Wings (Layer)', 'Hard Drumsticks (Layer)', 
-        'Gizzard', 'Other'
+      'Skincare': [
+        'Cleanser / Face Wash', 'Toner', 'Moisturizer / Cream', 
+        'Face Serum / Oil', 'Sunscreen / SPF', 'Body Lotion / Body Butter', 
+        'Face Mask / Scrub', 'Exfoliator', 'Other'
       ],
-      'Soft Chicken (Broiler)': [
-        'Soft Whole Chicken (Broiler)', 'Soft Thigh (Broiler)', 'Soft Breast (Broiler)', 
-        'Soft Back (Broiler)', 'Soft Wings (Broiler)', 'Soft Drumsticks (Broiler)', 
-        'Gizzard', 'Other'
+      'Haircare': [
+        'Shampoo', 'Conditioner', 'Hair Oil / Serum', 
+        'Hair Treatment / Mask', 'Leave-in Conditioner', 'Edge Control / Gel', 
+        'Hair Spray / Mousse', 'Wig & Weave Care', 'Other'
       ],
-      'Beef': [
-        'Standard Meat', 'Boneless', 'Cow Steak', 
-        'Liver & Lungs', 'Grounded Meat', 'Tail / Padua',
-        'Other'
+      'Fragrance & Perfumes': [
+        'Perfume / Eau de Parfum', 'Body Spray / Body Mist', 'Cologne / Eau de Toilette', 
+        'Roll-on Deodorant', 'Fragrance Oil / Oud', 'Room / Linen Spray', 'Other'
       ],
-      'Cow': [
-        'Offals / Yemadeɛ', 'Feet', 'Head', 'Other'
+      'Makeup & Cosmetics': [
+        'Foundation / BB Cream', 'Face Powder / Compact', 'Concealer / Contour', 
+        'Lipstick / Lip Gloss / Lip Balm', 'Mascara / Eyeliner', 'Eyeshadow Palette', 
+        'Primer / Setting Spray', 'Makeup Remover / Wipes', 'Other'
       ],
-      'Goat': ['Standard Meat', 'Boneless', 'Offals / Yemadeɛ', 'Head', 'Feet', 'Other'],
-      'Sheep': ['Standard Meat', 'Boneless', 'Offals / Yemadeɛ', 'Head', 'Feet', 'Other'],
-      'Pork': [
-        'Standard Meat', 'Boneless Meat', 'Offals / Yemadeɛ', 'Pork Steak', 
-        'Head', 'Ear', 'Feet', 'Liver', 'Skin',
-        'Other'
+      'Personal Care & Bath': [
+        'Body Wash / Shower Gel', 'Soap Bar / Bath Soap', 'Hand Cream / Sanitizer', 
+        'Intimate Care', 'Bath Salts / Soaks', 'Other'
       ],
-      'Turkey': ['Whole Turkey', 'Breast', 'Thighs', 'Drumsticks', 'Wings', 'Gizzards', 'Feet', 'Other'],
-      'Rabbit': ['Whole Rabbit', 'Legs', 'Saddle', 'Shoulders', 'Other'],
-      'Lamb': ['Standard Meat', 'Boneless', 'Chops', 'Other'],
-      'Feeds': ['Dog Feed', 'Other'],
+      'Nail Care': [
+        'Nail Polish / Gel', 'Nail Polish Remover', 'Cuticle Oil / Treatment', 
+        'Nail Tools / Files', 'Other'
+      ],
+      'Men\'s Grooming': [
+        'Beard Oil / Balm', 'Aftershave Lotion / Balm', 'Shaving Cream / Gel', 
+        'Men\'s Face Wash / Body Wash', 'Other'
+      ],
+      'Beauty Accessories & Tools': [
+        'Makeup Brushes / Sponges', 'Hair Combs / Brushes', 'Eyelashes / Eyelash Glue', 
+        'Cotton Pads / Swabs', 'Mirrors / Bags', 'Other'
+      ],
       'Other': ['Custom Entry']
     };
 
@@ -1070,7 +1079,6 @@ class _InventoryControlScreenState extends ConsumerState<InventoryControlScreen>
                   }).toList(),
                   onChanged: (v) => setState(() {
                     selectedProductName = v;
-                    selectedRange = null; // Reset range when product changes
                     if (v != 'Other' && v != 'Custom Entry') {
                       nameController.text = v!;
                     } else {
@@ -1079,20 +1087,6 @@ class _InventoryControlScreenState extends ConsumerState<InventoryControlScreen>
                   }),
                   validator: (v) => (v == null) ? 'Required' : null,
                 ),
-                if ((selectedCategory == 'Hard Chicken (Layer)' || selectedCategory == 'Soft Chicken (Broiler)') && selectedProductName != 'Gizzard' && selectedProductName != null) ...[
-                  const SizedBox(height: AppSpacing.m),
-                  DropdownButtonFormField<ChickenRange>(
-                    initialValue: selectedRange,
-                    isExpanded: true,
-                    decoration: const InputDecoration(labelText: 'Weight Range (LB)'),
-                    items: (selectedCategory == 'Hard Chicken (Layer)' ? AnimalType.hardChicken : AnimalType.softChicken)
-                        .chickenRanges
-                        .map((r) => DropdownMenuItem(value: r, child: Text(r.label)))
-                        .toList(),
-                    onChanged: (v) => setState(() => selectedRange = v),
-                    // validator removed to make it optional, or use the "No Range" option
-                  ),
-                ],
                 if (selectedProductName == 'Other' || selectedProductName == 'Custom Entry') ...[
                   const SizedBox(height: AppSpacing.m),
                   _buildFormTextField(
@@ -1195,7 +1189,7 @@ class _InventoryControlScreenState extends ConsumerState<InventoryControlScreen>
                         initialValue: selectedUnit,
                         isExpanded: true,
                         decoration: const InputDecoration(labelText: 'Unit'),
-                        items: WeightUnit.values.map((u) => DropdownMenuItem(value: u, child: Text(u == WeightUnit.unit ? 'PCS' : u.name.toUpperCase()))).toList(),
+                        items: [WeightUnit.pcs, WeightUnit.box].map((u) => DropdownMenuItem(value: u, child: Text(u == WeightUnit.pcs ? 'PCS' : 'BOXES'))).toList(),
                         onChanged: (v) => setState(() => selectedUnit = v!),
                       ),
                     ),
@@ -1238,13 +1232,6 @@ class _InventoryControlScreenState extends ConsumerState<InventoryControlScreen>
                   }
 
                   String finalName = nameController.text;
-                  if ((selectedCategory == 'Hard Chicken (Layer)' || selectedCategory == 'Soft Chicken (Broiler)') && 
-                      selectedRange != null && 
-                      selectedRange!.label != 'No Range') {
-                    if (!finalName.contains(selectedRange!.label)) {
-                      finalName = '$finalName (${selectedRange!.label})';
-                    }
-                  }
 
                   final String validUuid = UuidUtils.generate();
 
@@ -1288,7 +1275,7 @@ class _InventoryControlScreenState extends ConsumerState<InventoryControlScreen>
     final otherCategoryController = TextEditingController();
     final theme = Theme.of(context);
     
-    final categories = ['Beef', 'Cow', 'Pork', 'Hard Chicken (Layer)', 'Soft Chicken (Broiler)', 'Lamb', 'Goat', 'Turkey', 'Rabbit', 'Feeds', 'Other'];
+    final categories = ['Skincare', 'Haircare', 'Fragrance & Perfumes', 'Makeup & Cosmetics', 'Personal Care & Bath', 'Nail Care', 'Men\'s Grooming', 'Beauty Accessories & Tools', 'Other'];
     String normalized = _normalizeCategory(product);
     String selectedCategory = categories.contains(normalized) ? normalized : 'Other';
     bool isUnlimited = product.isUnlimited;
@@ -1992,7 +1979,10 @@ class _InventoryControlScreenState extends ConsumerState<InventoryControlScreen>
     final formKey = GlobalKey<FormState>();
     final stockController = TextEditingController();
     final theme = Theme.of(context);
-    WeightUnit selectedUnit = WeightUnit.values.firstWhere((u) => u.name == product.unit, orElse: () => WeightUnit.kg);
+    WeightUnit selectedUnit = WeightUnit.values.firstWhere(
+      (u) => u.name.toLowerCase() == product.unit.toLowerCase() || (product.unit.toLowerCase() == 'pcs' && u == WeightUnit.pcs), 
+      orElse: () => WeightUnit.pcs
+    );
 
     showDialog(
       context: context,
@@ -2074,26 +2064,22 @@ class _InventoryControlScreenState extends ConsumerState<InventoryControlScreen>
                         children: [
                           const Text('UNIT', style: TextStyle(fontSize: 8, fontWeight: FontWeight.bold)),
                           ToggleButtons(
-                            constraints: const BoxConstraints(minWidth: 32, minHeight: 36),
+                            constraints: const BoxConstraints(minWidth: 40, minHeight: 36),
                             isSelected: [
-                              selectedUnit == WeightUnit.kg, 
-                              selectedUnit == WeightUnit.g,
-                              selectedUnit == WeightUnit.lb,
-                              selectedUnit == WeightUnit.unit,
+                              selectedUnit == WeightUnit.pcs || selectedUnit == WeightUnit.unit, 
+                              selectedUnit == WeightUnit.box,
                             ],
                             onPressed: (index) {
                               setState(() {
-                                selectedUnit = WeightUnit.values[index];
+                                selectedUnit = index == 0 ? WeightUnit.pcs : WeightUnit.box;
                               });
                             },
                             borderRadius: BorderRadius.circular(8),
                             selectedColor: Colors.white,
                             fillColor: theme.colorScheme.primary,
                             children: const [
-                              Text('kg', style: TextStyle(fontSize: 9)),
-                              Text('g', style: TextStyle(fontSize: 9)),
-                              Text('lb', style: TextStyle(fontSize: 9)),
-                              Text('pcs', style: TextStyle(fontSize: 9)),
+                              Text('pcs', style: TextStyle(fontSize: 10, fontWeight: FontWeight.bold)),
+                              Text('box', style: TextStyle(fontSize: 10, fontWeight: FontWeight.bold)),
                             ],
                           ),
                         ],
@@ -2232,20 +2218,20 @@ class _InventoryControlScreenState extends ConsumerState<InventoryControlScreen>
                       ToggleButtons(
                         constraints: const BoxConstraints(minWidth: 40, minHeight: 32),
                         isSelected: [
-                          selectedUnit == WeightUnit.kg, 
-                          selectedUnit == WeightUnit.lb,
+                          selectedUnit == WeightUnit.pcs || selectedUnit == WeightUnit.unit, 
+                          selectedUnit == WeightUnit.box,
                         ],
                         onPressed: (index) {
                           setState(() {
-                            selectedUnit = index == 0 ? WeightUnit.kg : WeightUnit.lb;
+                            selectedUnit = index == 0 ? WeightUnit.pcs : WeightUnit.box;
                           });
                         },
                         borderRadius: BorderRadius.circular(8),
                         selectedColor: Colors.white,
                         fillColor: Colors.orange,
                         children: const [
-                          Text('kg', style: TextStyle(fontSize: 10, fontWeight: FontWeight.bold)),
-                          Text('lb', style: TextStyle(fontSize: 10, fontWeight: FontWeight.bold)),
+                          Text('pcs', style: TextStyle(fontSize: 10, fontWeight: FontWeight.bold)),
+                          Text('box', style: TextStyle(fontSize: 10, fontWeight: FontWeight.bold)),
                         ],
                       ),
                     ],
@@ -2406,23 +2392,17 @@ class _InventoryControlScreenState extends ConsumerState<InventoryControlScreen>
   }
 
   String _normalizeCategory(Product p) {
-    final cat = p.category.toUpperCase();
-    if (cat.contains('BEEF') || cat.contains('COW')) {
-      final n = p.name.toUpperCase();
-      if (n.contains('HEAD') || n.contains('FEET') || n.contains('OFFAL')) {
-        return 'Cow';
-      }
-      return 'Beef';
-    }
-    if (cat.contains('HARD LAYER') || cat.contains('HARD CHICKEN')) return 'Hard Chicken (Layer)';
-    if (cat.contains('SOFT BROILER') || cat.contains('SOFT CHICKEN')) return 'Soft Chicken (Broiler)';
-    if (cat.contains('CHICKEN')) {
-      if (p.name.contains('Hard')) return 'Hard Chicken (Layer)';
-      if (p.name.contains('Soft')) return 'Soft Chicken (Broiler)';
-      return 'Hard Chicken (Layer)'; // Default
-    }
-    // Title case fallback
+    final cat = p.category.trim();
     if (cat.isEmpty) return 'Other';
+    final upper = cat.toUpperCase();
+    if (upper.contains('SKIN')) return 'Skincare';
+    if (upper.contains('HAIR')) return 'Haircare';
+    if (upper.contains('FRAGRANCE') || upper.contains('PERFUME')) return 'Fragrance & Perfumes';
+    if (upper.contains('MAKEUP') || upper.contains('COSMETIC')) return 'Makeup & Cosmetics';
+    if (upper.contains('PERSONAL') || upper.contains('BATH') || upper.contains('SOAP')) return 'Personal Care & Bath';
+    if (upper.contains('NAIL')) return 'Nail Care';
+    if (upper.contains('GROOMING') || upper.contains('MEN')) return 'Men\'s Grooming';
+    if (upper.contains('ACCESSORIES') || upper.contains('TOOL')) return 'Beauty Accessories & Tools';
     return cat[0].toUpperCase() + cat.substring(1).toLowerCase();
   }
 }
