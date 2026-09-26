@@ -37,9 +37,9 @@ class ReceiptService {
                   children: [
                     pw.Text('CITY COSMETICS', style: pw.TextStyle(font: boldFont, fontSize: 18)),
                     pw.Text('BEAUTY & COSMETICS POS', style: pw.TextStyle(font: font)),
-                    pw.Text('Location: New Town, Road linking From Water works Ltd. to Atronie Road', 
+                    pw.Text('Location: Sunyani, directly opposite Sweet Touch Restaurant', 
                       style: pw.TextStyle(font: font, fontSize: 7), textAlign: pw.TextAlign.center),
-                    pw.Text('GPS: BS-0006-1566 | Tel: 0209276200', 
+                    pw.Text('Tel: 0542562486', 
                       style: pw.TextStyle(font: font, fontSize: 7)),
                     pw.SizedBox(height: 10),
                   ],
@@ -128,27 +128,52 @@ class ReceiptService {
               pw.Row(
                 mainAxisAlignment: pw.MainAxisAlignment.spaceBetween,
                 children: [
-                  pw.Text('Item', style: pw.TextStyle(font: boldFont, fontSize: 8)),
-                  pw.Text('Total', style: pw.TextStyle(font: boldFont, fontSize: 8)),
+                  pw.Expanded(flex: 4, child: pw.Text('Item Description', style: pw.TextStyle(font: boldFont, fontSize: 8))),
+                  pw.Expanded(flex: 1, child: pw.Text('Qty', style: pw.TextStyle(font: boldFont, fontSize: 8), textAlign: pw.TextAlign.center)),
+                  pw.Expanded(flex: 2, child: pw.Text('Total (GH₵)', style: pw.TextStyle(font: boldFont, fontSize: 8), textAlign: pw.TextAlign.right)),
                 ],
               ),
-              pw.SizedBox(height: 5),
-              ...sale.items.map((item) => pw.Column(
-                  crossAxisAlignment: pw.CrossAxisAlignment.start,
-                  children: [
-                    pw.Row(
-                      mainAxisAlignment: pw.MainAxisAlignment.spaceBetween,
-                      children: [
-                        pw.Expanded(
-                          child: pw.Text('[${item.product.category.toUpperCase()}] ${item.product.name} (${WeightConverter.formatShort(item.quantity, unit: item.selectedUnit ?? item.product.unit)})', 
-                            style: pw.TextStyle(font: font, fontSize: 8)),
+              pw.SizedBox(height: 4),
+              ...sale.items.map((item) {
+                final String unitStr = item.selectedUnit ?? item.product.unit;
+                final String qtyText = (unitStr.toLowerCase() != 'kg' && unitStr.toLowerCase() != 'unit') 
+                    ? '${item.quantity.toInt()} $unitStr' 
+                    : '${item.quantity.toInt()} pcs';
+
+                return pw.Padding(
+                  padding: const pw.EdgeInsets.symmetric(vertical: 2),
+                  child: pw.Row(
+                    crossAxisAlignment: pw.CrossAxisAlignment.start,
+                    children: [
+                      pw.Expanded(
+                        flex: 4,
+                        child: pw.Text(
+                          item.product.name, 
+                          style: pw.TextStyle(font: font, fontSize: 8),
                         ),
-                        pw.Text(item.total.toStringAsFixed(2), style: pw.TextStyle(font: font, fontSize: 8)),
-                      ],
-                    ),
-                  ],
-                )),
-              pw.Divider(thickness: 0.5),
+                      ),
+                      pw.Expanded(
+                        flex: 1,
+                        child: pw.Text(
+                          qtyText,
+                          style: pw.TextStyle(font: font, fontSize: 8),
+                          textAlign: pw.TextAlign.center,
+                        ),
+                      ),
+                      pw.Expanded(
+                        flex: 2,
+                        child: pw.Text(
+                          item.total.toStringAsFixed(2), 
+                          style: pw.TextStyle(font: font, fontSize: 8),
+                          textAlign: pw.TextAlign.right,
+                        ),
+                      ),
+                    ],
+                  ),
+                );
+              }),
+              // Redundant second line removed for cleaner layout
+              pw.SizedBox(height: 6),
               
               pw.Row(
                 mainAxisAlignment: pw.MainAxisAlignment.end,
@@ -167,20 +192,26 @@ class ReceiptService {
               pw.Text('PAYMENT BREAKDOWN', style: pw.TextStyle(font: boldFont, fontSize: 8)),
               pw.SizedBox(height: 4),
 
-              ...sale.payments.map((p) => pw.Row(
-                    mainAxisAlignment: pw.MainAxisAlignment.spaceBetween,
-                    children: [
-                      pw.Text('METHOD: ${_formatMethod(p)}', style: pw.TextStyle(font: font, fontSize: 8)),
-                      pw.Text('₵ ${p.amount.toStringAsFixed(2)}', style: pw.TextStyle(font: boldFont, fontSize: 8)),
-                    ],
+              ...sale.payments.map((p) => pw.Padding(
+                    padding: const pw.EdgeInsets.symmetric(vertical: 1),
+                    child: pw.Row(
+                      mainAxisAlignment: pw.MainAxisAlignment.spaceBetween,
+                      children: [
+                        pw.Text('METHOD: ${_formatMethod(p)}', style: pw.TextStyle(font: font, fontSize: 8)),
+                        pw.Text('GH₵ ${p.amount.toStringAsFixed(2)}', style: pw.TextStyle(font: boldFont, fontSize: 8)),
+                      ],
+                    ),
                   )),
               
-              pw.Row(
-                mainAxisAlignment: pw.MainAxisAlignment.spaceBetween,
-                children: [
-                  pw.Text('Paid Amount', style: pw.TextStyle(font: boldFont, fontSize: 8)),
-                  pw.Text(sale.amountPaid.toStringAsFixed(2), style: pw.TextStyle(font: boldFont, fontSize: 8)),
-                ],
+              pw.Padding(
+                padding: const pw.EdgeInsets.symmetric(vertical: 1),
+                child: pw.Row(
+                  mainAxisAlignment: pw.MainAxisAlignment.spaceBetween,
+                  children: [
+                    pw.Text('Paid Amount', style: pw.TextStyle(font: boldFont, fontSize: 8)),
+                    pw.Text('GH₵ ${sale.amountPaid.toStringAsFixed(2)}', style: pw.TextStyle(font: boldFont, fontSize: 8)),
+                  ],
+                ),
               ),
               
               if (sale.balance > 0.01)
@@ -283,12 +314,13 @@ static String _generateQRData(SaleRecord sale) {
 
   static pw.Widget _receiptRow(String label, double value, pw.Font font, {bool isBold = false}) {
     return pw.Padding(
-      padding: const pw.EdgeInsets.symmetric(vertical: 0.5),
+      padding: const pw.EdgeInsets.symmetric(vertical: 1.5),
       child: pw.Row(
         mainAxisAlignment: pw.MainAxisAlignment.spaceBetween,
         children: [
-          pw.Text(label, style: pw.TextStyle(font: font, fontSize: 8, fontWeight: isBold ? pw.FontWeight.bold : pw.FontWeight.normal)),
-          pw.Text(value.toStringAsFixed(2), style: pw.TextStyle(font: font, fontSize: 8, fontWeight: isBold ? pw.FontWeight.bold : pw.FontWeight.normal)),
+          pw.Text('$label: ', style: pw.TextStyle(font: font, fontSize: 8, fontWeight: isBold ? pw.FontWeight.bold : pw.FontWeight.normal)),
+          pw.SizedBox(width: 16),
+          pw.Text('GH₵ ${value.toStringAsFixed(2)}', style: pw.TextStyle(font: font, fontSize: 8, fontWeight: isBold ? pw.FontWeight.bold : pw.FontWeight.normal)),
         ],
       ),
     );
