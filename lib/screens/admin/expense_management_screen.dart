@@ -151,7 +151,7 @@ class _ExpenseManagementScreenState extends ConsumerState<ExpenseManagementScree
             userRole: user.activePrimaryRole.name.toUpperCase(),
             currentRoute: currentRoute,
             items: MenuService.getMenuItemsForUser(user),
-            onTap: (route) => MenuService.navigate(context, route, currentRoute),
+            onTap: (route) => MenuService.navigate(context, ref, route, currentRoute),
           ),
         ),
         body: Row(
@@ -163,7 +163,7 @@ class _ExpenseManagementScreenState extends ConsumerState<ExpenseManagementScree
                 userRole: user.activePrimaryRole.name.toUpperCase(),
                 currentRoute: currentRoute,
                 items: MenuService.getMenuItemsForUser(user),
-                onTap: (route) => MenuService.navigate(context, route, currentRoute),
+                onTap: (route) => MenuService.navigate(context, ref, route, currentRoute),
               ),
             Expanded(
               child: SingleChildScrollView(
@@ -440,7 +440,7 @@ class _ExpenseManagementScreenState extends ConsumerState<ExpenseManagementScree
                 SizedBox(
                   width: isMobile ? double.infinity : 170,
                   child: DropdownButtonFormField<String>(
-                    value: allCategories.contains(_selectedCategory) ? _selectedCategory : 'All',
+                    initialValue: allCategories.contains(_selectedCategory) ? _selectedCategory : 'All',
                     isExpanded: true,
                     decoration: const InputDecoration(
                       labelText: 'Category',
@@ -456,7 +456,7 @@ class _ExpenseManagementScreenState extends ConsumerState<ExpenseManagementScree
                 SizedBox(
                   width: isMobile ? double.infinity : 150,
                   child: DropdownButtonFormField<String>(
-                    value: _datePreset,
+                    initialValue: _datePreset,
                     isExpanded: true,
                     decoration: const InputDecoration(
                       labelText: 'Date Range',
@@ -495,7 +495,7 @@ class _ExpenseManagementScreenState extends ConsumerState<ExpenseManagementScree
                 SizedBox(
                   width: isMobile ? double.infinity : 150,
                   child: DropdownButtonFormField<String>(
-                    value: _receiptFilter,
+                    initialValue: _receiptFilter,
                     isExpanded: true,
                     decoration: const InputDecoration(
                       labelText: 'Receipt Image',
@@ -511,7 +511,7 @@ class _ExpenseManagementScreenState extends ConsumerState<ExpenseManagementScree
                 SizedBox(
                   width: isMobile ? double.infinity : 170,
                   child: DropdownButtonFormField<String>(
-                    value: _sortBy,
+                    initialValue: _sortBy,
                     isExpanded: true,
                     decoration: const InputDecoration(
                       labelText: 'Sort By',
@@ -845,7 +845,7 @@ class _ExpenseManagementScreenState extends ConsumerState<ExpenseManagementScree
                   ),
                   const SizedBox(height: 16),
                   DropdownButtonFormField<String>(
-                    value: selectedCategory,
+                    initialValue: selectedCategory,
                     decoration: const InputDecoration(labelText: 'Category'),
                     items: [
                       ...expenseState.categories.map((c) => DropdownMenuItem<String>(value: c, child: Text(c))),

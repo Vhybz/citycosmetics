@@ -70,7 +70,7 @@ class _AuditTrailScreenState extends ConsumerState<AuditTrailScreen> {
             userRole: user.activePrimaryRole.toString().split('.').last.toUpperCase(),
             currentRoute: currentRoute,
             items: menuItems,
-            onTap: (route) => MenuService.navigate(context, route, currentRoute),
+            onTap: (route) => MenuService.navigate(context, ref, route, currentRoute),
           ),
         ),
         body: Row(
@@ -82,7 +82,7 @@ class _AuditTrailScreenState extends ConsumerState<AuditTrailScreen> {
                 userRole: user.activePrimaryRole.toString().split('.').last.toUpperCase(),
                 currentRoute: currentRoute,
                 items: menuItems,
-                onTap: (route) => MenuService.navigate(context, route, currentRoute),
+                onTap: (route) => MenuService.navigate(context, ref, route, currentRoute),
               ),
             Expanded(
               child: Column(
@@ -121,8 +121,8 @@ class _AuditTrailScreenState extends ConsumerState<AuditTrailScreen> {
         runSpacing: AppSpacing.m,
         crossAxisAlignment: WrapCrossAlignment.center,
         children: [
-          SizedBox(
-            width: 250,
+          ConstrainedBox(
+            constraints: const BoxConstraints(maxWidth: 250),
             child: TextField(
               onChanged: (v) => setState(() => _searchQuery = v),
               decoration: InputDecoration(
@@ -133,15 +133,16 @@ class _AuditTrailScreenState extends ConsumerState<AuditTrailScreen> {
               ),
             ),
           ),
-          SizedBox(
-            width: 200,
+          ConstrainedBox(
+            constraints: const BoxConstraints(maxWidth: 220),
             child: DropdownButtonFormField<String>(
+              isExpanded: true,
               initialValue: _selectedAction,
               decoration: const InputDecoration(labelText: 'Action Type', isDense: true, border: OutlineInputBorder()),
               items: [
-                const DropdownMenuItem(value: null, child: Text('All Actions')),
+                const DropdownMenuItem(value: null, child: Text('All Actions', overflow: TextOverflow.ellipsis)),
                 ...['SALE_CREATED', 'SALE_REVERSED', 'STOCK_ADJUSTED', 'PRODUCT_UPDATED', 'USER_PROMOTED', 'CEO_WITHDRAWAL', 'WITHDRAWAL_EDITED', 'WITHDRAWAL_DELETED', 'USER_SIGNED_IN', 'USER_SIGNED_OUT']
-                    .map((a) => DropdownMenuItem(value: a, child: Text(a.replaceAll('_', ' ')))),
+                    .map((a) => DropdownMenuItem(value: a, child: Text(a.replaceAll('_', ' '), overflow: TextOverflow.ellipsis))),
               ],
               onChanged: (v) => setState(() => _selectedAction = v),
             ),

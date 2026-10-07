@@ -33,7 +33,7 @@ class AboutScreen extends ConsumerWidget {
             userRole: user.activePrimaryRole.name.toUpperCase(),
             currentRoute: currentRoute,
             items: menuItems,
-            onTap: (route) => MenuService.navigate(context, route, currentRoute),
+            onTap: (route) => MenuService.navigate(context, ref, route, currentRoute),
           ),
         ),
         body: Row(
@@ -45,7 +45,7 @@ class AboutScreen extends ConsumerWidget {
                 userRole: user.activePrimaryRole.name.toUpperCase(),
                 currentRoute: currentRoute,
                 items: menuItems,
-                onTap: (route) => MenuService.navigate(context, route, currentRoute),
+                onTap: (route) => MenuService.navigate(context, ref, route, currentRoute),
               ),
             Expanded(
               child: SafeArea(
@@ -182,7 +182,7 @@ class AboutScreen extends ConsumerWidget {
                     children: [
                       Expanded(child: _buildAppFeatureColumn([
                         'Verified Inventory Protection',
-                        'Real-time Slaughter Yield Tracking',
+                        'Real-time Stock & Batch Tracking',
                         'Automated GRA Tax Engine',
                       ])),
                       const SizedBox(width: 24),
@@ -196,7 +196,7 @@ class AboutScreen extends ConsumerWidget {
                 }
                 return _buildAppFeatureColumn([
                   'Verified Inventory Protection',
-                  'Real-time Slaughter Yield Tracking',
+                  'Real-time Stock & Batch Tracking',
                   'Automated GRA Tax Engine',
                   'Multi-branch Global Sync',
                   'Comprehensive Debt Management',
@@ -343,22 +343,130 @@ class AboutScreen extends ConsumerWidget {
   }
 
   Widget _buildFooter(BuildContext context) {
-    return const Center(
+    return Center(
       child: Column(
         children: [
-          Text(
+          OutlinedButton.icon(
+            onPressed: () => _showTermsDialog(context),
+            icon: const Icon(Icons.gavel_rounded, size: 16),
+            label: const Text('Terms of Use & User Agreement'),
+            style: OutlinedButton.styleFrom(
+              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(AppRadius.m)),
+            ),
+          ),
+          const SizedBox(height: 16),
+          const Text(
             'CITY COSMETICS POS v2.1.0-STABLE',
             style: TextStyle(fontSize: 12, color: AppColors.textLight, fontWeight: FontWeight.bold, letterSpacing: 1),
           ),
-          SizedBox(height: 6),
-          Text(
+          const SizedBox(height: 6),
+          const Text(
             'Engineered with excellence for modern commerce.',
             style: TextStyle(fontSize: 11, color: AppColors.textLight),
           ),
-          SizedBox(height: 4),
-          Text(
+          const SizedBox(height: 4),
+          const Text(
             '© 2024. All Rights Reserved.',
             style: TextStyle(fontSize: 10, color: AppColors.textLight),
+          ),
+        ],
+      ),
+    );
+  }
+
+  void _showTermsDialog(BuildContext context) {
+    showDialog(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Row(
+          children: [
+            Icon(Icons.gavel_rounded, color: AppColors.primaryMaroon),
+            SizedBox(width: 10),
+            Expanded(
+              child: Text(
+                'Terms of Use & User Agreement',
+                style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+              ),
+            ),
+          ],
+        ),
+        content: SizedBox(
+          width: 500,
+          height: 450,
+          child: SingleChildScrollView(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: const [
+                Text(
+                  '1. Acceptance of Terms',
+                  style: TextStyle(fontWeight: FontWeight.bold, fontSize: 13),
+                ),
+                SizedBox(height: 4),
+                Text(
+                  'By accessing, logging into, or using the City Cosmetics Point of Sale (POS) System ("System"), you agree to be bound by these Terms of Use, User Agreement, and Data Confidentiality policies. If you do not agree, you must not use the System.',
+                  style: TextStyle(fontSize: 11, height: 1.5, color: Colors.black87),
+                ),
+                SizedBox(height: 12),
+                Text(
+                  '2. Authorized Access & Account Security',
+                  style: TextStyle(fontWeight: FontWeight.bold, fontSize: 13),
+                ),
+                SizedBox(height: 4),
+                Text(
+                  'The System is strictly intended for authorized employees, cashiers, and administrators of City Cosmetics. You are fully responsible for maintaining the confidentiality of your account credentials, passcode, and PIN. Sharing login credentials or PINs is strictly prohibited and constitutes a security violation.',
+                  style: TextStyle(fontSize: 11, height: 1.5, color: Colors.black87),
+                ),
+                SizedBox(height: 12),
+                Text(
+                  '3. Inventory & Financial Accountability',
+                  style: TextStyle(fontWeight: FontWeight.bold, fontSize: 13),
+                ),
+                SizedBox(height: 4),
+                Text(
+                  'Cashiers and staff members are accountable for accurate cash drawer reconciliation, sales transactions, shift check-ins, and stock verifications recorded under their user session. Tampering with stock records, debt logs, or financial figures is a violation of employment and system terms.',
+                  style: TextStyle(fontSize: 11, height: 1.5, color: Colors.black87),
+                ),
+                SizedBox(height: 12),
+                Text(
+                  '4. Data Privacy & Confidentiality',
+                  style: TextStyle(fontWeight: FontWeight.bold, fontSize: 13),
+                ),
+                SizedBox(height: 4),
+                Text(
+                  'Customer contact data, sales records, and staff location/attendance GPS audits are processed securely and must be treated with absolute confidentiality in accordance with business compliance standards and privacy protection laws.',
+                  style: TextStyle(fontSize: 11, height: 1.5, color: Colors.black87),
+                ),
+                SizedBox(height: 12),
+                Text(
+                  '5. Intellectual Property',
+                  style: TextStyle(fontWeight: FontWeight.bold, fontSize: 13),
+                ),
+                SizedBox(height: 4),
+                Text(
+                  'All source code, database architecture, UI/UX design, and branding associated with the System are the intellectual property of techRaven (Clifford Kyeremeh) and City Cosmetics. Unauthorized copying, reverse engineering, or redistribution is strictly prohibited.',
+                  style: TextStyle(fontSize: 11, height: 1.5, color: Colors.black87),
+                ),
+                SizedBox(height: 12),
+                Text(
+                  '6. Limitation of Liability',
+                  style: TextStyle(fontWeight: FontWeight.bold, fontSize: 13),
+                ),
+                SizedBox(height: 4),
+                Text(
+                  'The developer, system architects, and management assume no liability for financial discrepancies, data loss, or unauthorized access resulting from compromised user PINs, shared credentials, or offline synchronization conflicts.',
+                  style: TextStyle(fontSize: 11, height: 1.5, color: Colors.black87),
+                ),
+              ],
+            ),
+          ),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: const Text('CLOSE'),
           ),
         ],
       ),

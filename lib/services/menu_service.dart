@@ -1,36 +1,79 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:hive/hive.dart';
 import '../widgets/app_sidebar.dart';
 import '../models/user_model.dart';
 import 'user_provider.dart';
 import 'transfer_provider.dart';
 
+class MenuClicksNotifier extends StateNotifier<Map<String, int>> {
+  MenuClicksNotifier() : super({}) {
+    _loadClicks();
+  }
+
+  void _loadClicks() {
+    try {
+      final box = Hive.box('app_settings');
+      final Map<dynamic, dynamic>? clicks = box.get('menu_clicks');
+      if (clicks != null) {
+        state = Map<String, int>.from(clicks);
+      }
+    } catch (e) {
+      debugPrint('Error loading menu clicks: $e');
+    }
+  }
+
+  void recordClick(String route) {
+    if (route == '/admin' || route == '/cashier') return; // Don't track home routes
+    final newClicks = Map<String, int>.from(state);
+    newClicks[route] = (newClicks[route] ?? 0) + 1;
+    state = newClicks;
+    
+    try {
+      final box = Hive.box('app_settings');
+      box.put('menu_clicks', newClicks);
+    } catch (e) {
+      debugPrint('Error saving menu clicks: $e');
+    }
+  }
+}
+
+final menuClicksProvider = StateNotifierProvider<MenuClicksNotifier, Map<String, int>>((ref) {
+  return MenuClicksNotifier();
+});
+
 class MenuService {
-  static List<SidebarItem> getMenuItemsForUser(UserAccount user, {bool inButcherShell = false, int? pendingTransfersCount}) {
+  static List<SidebarItem> getMenuItemsForUser(UserAccount user, {int? pendingTransfersCount, Map<String, int>? clicks}) {
     final List<SidebarItem> items = [];
     final roles = user.activeRoles;
     
     // Check if user is Admin or Super Admin
     final isAdmin = roles.contains(UserRole.admin) || roles.contains(UserRole.superAdmin);
 
+    // Section categories
+    const secOverview = 'Overview & Analytics';
+    const secStore = 'Store Front & Sales';
+    const secInventory = 'Inventory & Supply Chain';
+    const secFinance = 'Finance & Compliance';
+    const secAdmin = 'Administration & System';
+
     // List of all possible admin items
     final List<SidebarItem> adminItems = [
-      SidebarItem(icon: Icons.dashboard_rounded, label: 'Admin Dashboard', route: '/admin'),
-      SidebarItem(icon: Icons.admin_panel_settings_rounded, label: 'Staff Management', route: '/admin/staff'),
-      SidebarItem(icon: Icons.bar_chart_rounded, label: 'Sales Analytics', route: '/admin/sales'),
-      SidebarItem(icon: Icons.inventory_2_rounded, label: 'Master Stock Control', route: '/admin/stock'),
-      SidebarItem(icon: Icons.assessment_rounded, label: 'Product Activity Report', route: '/admin/product-report'),
-      SidebarItem(icon: Icons.account_balance_wallet_rounded, label: 'Debt Tracker', route: '/admin/debts'),
-      SidebarItem(icon: Icons.receipt_long_rounded, label: 'Business Expenses', route: '/admin/expenses'),
-      SidebarItem(icon: Icons.account_balance_wallet_outlined, label: 'Till & Sales Log', route: '/admin/sales'),
-      SidebarItem(icon: Icons.people_outline_rounded, label: 'Customer Directory', route: '/admin/customers'),
-      SidebarItem(icon: Icons.account_balance_rounded, label: 'GRA Tax Compliance', route: '/admin/tax'),
-      SidebarItem(icon: Icons.payments_rounded, label: 'Salary Management', route: '/admin/salaries'),
-      SidebarItem(icon: Icons.folder_open_rounded, label: 'Compliance Documents', route: '/admin/documents'),
-      SidebarItem(icon: Icons.history_rounded, label: 'Company Recents', route: '/admin/recents'),
-      SidebarItem(icon: Icons.security_update_good_rounded, label: 'System Audit Trail', route: '/admin/audit'),
-      SidebarItem(icon: Icons.qr_code_scanner_rounded, label: 'Verify Incoming Stock', route: '/cashier/verify-stock'),
-      SidebarItem(icon: Icons.build_circle_rounded, label: 'System Maintenance', route: '/admin/maintenance'),
+      SidebarItem(icon: Icons.dashboard_rounded, label: 'Admin Dashboard', route: '/admin', category: secOverview),
+      SidebarItem(icon: Icons.bar_chart_rounded, label: 'Sales & Analytics', route: '/admin/sales', category: secOverview),
+      SidebarItem(icon: Icons.people_outline_rounded, label: 'Customer Directory', route: '/admin/customers', category: secStore),
+      SidebarItem(icon: Icons.account_balance_wallet_rounded, label: 'Debt Tracker', route: '/admin/debts', category: secStore),
+      SidebarItem(icon: Icons.inventory_2_rounded, label: 'Master Stock Control', route: '/admin/stock', category: secInventory),
+      SidebarItem(icon: Icons.warehouse_rounded, label: 'Warehouse Operations', route: '/warehouse', category: secInventory, badgeCount: pendingTransfersCount),
+      SidebarItem(icon: Icons.assessment_rounded, label: 'Product Activity Report', route: '/admin/product-report', category: secInventory),
+      SidebarItem(icon: Icons.receipt_long_rounded, label: 'Business Expenses', route: '/admin/expenses', category: secFinance),
+      SidebarItem(icon: Icons.account_balance_rounded, label: 'GRA Tax Compliance', route: '/admin/tax', category: secFinance),
+      SidebarItem(icon: Icons.payments_rounded, label: 'Salary Management', route: '/admin/salaries', category: secFinance),
+      SidebarItem(icon: Icons.folder_open_rounded, label: 'Compliance Documents', route: '/admin/documents', category: secFinance),
+      SidebarItem(icon: Icons.admin_panel_settings_rounded, label: 'Staff Management', route: '/admin/staff', category: secAdmin),
+      SidebarItem(icon: Icons.history_rounded, label: 'Company Recents', route: '/admin/recents', category: secAdmin),
+      SidebarItem(icon: Icons.security_update_good_rounded, label: 'System Audit Trail', route: '/admin/audit', category: secAdmin),
+      SidebarItem(icon: Icons.build_circle_rounded, label: 'System Maintenance', route: '/admin/maintenance', category: secAdmin),
     ];
 
     // 1. Admin Module
@@ -43,13 +86,13 @@ class MenuService {
             label: item.label,
             route: item.route,
             isCatchy: user.newlyAddedPermissions.contains(item.route),
-            badgeCount: item.route == '/cashier/verify-stock' ? pendingTransfersCount : null,
+            category: item.category,
+            badgeCount: item.badgeCount,
           ));
           continue;
         }
 
         // Logic for regular Admin:
-        // Always show standard tools, show others if not restricted.
         final bool isSystemTool = item.route == '/admin' || 
                                   item.route == '/admin/tax' ||
                                   item.route == '/admin/documents' ||
@@ -59,6 +102,8 @@ class MenuService {
                                   item.route == '/admin/audit' || 
                                   item.route == '/admin/maintenance' ||
                                   item.route == '/admin/settings' ||
+                                  item.route == '/admin/stock' ||
+                                  item.route == '/warehouse' ||
                                   item.route == '/admin/product-report';
         
         final hasSpecificRestrictions = user.enabledPermissions.isNotEmpty && 
@@ -70,12 +115,12 @@ class MenuService {
             label: item.label,
             route: item.route,
             isCatchy: user.newlyAddedPermissions.contains(item.route),
-            badgeCount: item.route == '/cashier/verify-stock' ? pendingTransfersCount : null,
+            category: item.category,
+            badgeCount: item.badgeCount,
           ));
         }
       }
-    }
- else {
+    } else {
       // Check if non-admin has been granted specific admin duties
       for (final item in adminItems) {
         if (user.enabledPermissions.contains(item.route)) {
@@ -84,7 +129,8 @@ class MenuService {
             label: item.label,
             route: item.route,
             isCatchy: user.newlyAddedPermissions.contains(item.route),
-            badgeCount: item.route == '/cashier/verify-stock' ? pendingTransfersCount : null,
+            category: item.category,
+            badgeCount: item.badgeCount,
           ));
         }
       }
@@ -101,67 +147,75 @@ class MenuService {
         label: 'Cashier POS', 
         route: '/cashier', 
         isCatchy: user.newlyAddedPermissions.contains('/cashier'),
-      ));
-
-      items.add(SidebarItem(
-        icon: Icons.qr_code_scanner_rounded,
-        label: 'Verify Incoming Stock',
-        route: '/cashier/verify-stock',
-        badgeCount: (pendingTransfersCount ?? 0) > 0 ? pendingTransfersCount : null,
+        category: secStore,
       ));
       
-      // NEW: Cashiers get Daily Sales Report access
       if (roles.contains(UserRole.cashier)) {
         items.add(SidebarItem(
           icon: Icons.bar_chart_rounded,
           label: 'Daily Sales Report',
-          route: '/admin/sales', // Reusing sales report screen
+          route: '/admin/sales',
+          category: secOverview,
         ));
       }
     }
 
-    // 3. Butcher Module
-    final hasButcherAccess = roles.contains(UserRole.superAdmin) || 
-                             roles.contains(UserRole.butcher) || 
-                             user.enabledPermissions.contains('/butcher');
+    // 3. Warehouse Operations Module Access
+    final hasWarehouseAccess = roles.contains(UserRole.superAdmin) || 
+                               roles.contains(UserRole.admin) || 
+                               user.enabledPermissions.contains('/warehouse');
 
-    if (hasButcherAccess) {
-      if (inButcherShell) {
-        items.addAll([
-          SidebarItem(icon: Icons.dashboard_rounded, label: 'Butcher Home', route: 'butcher:dashboard'),
-          SidebarItem(icon: Icons.assignment_rounded, label: 'Processing Orders', route: 'butcher:orders'),
-          SidebarItem(icon: Icons.pets_rounded, label: 'Animal Intake', route: 'butcher:animalIntake'),
-          SidebarItem(icon: Icons.history_edu_rounded, label: 'Slaughter Logs', route: 'butcher:slaughterLog'),
-          SidebarItem(icon: Icons.outdoor_grill, label: 'Meat Processing', route: 'butcher:meatProcessing'),
-          SidebarItem(icon: Icons.layers_rounded, label: 'Batch Management', route: 'butcher:batchManagement'),
-          SidebarItem(icon: Icons.local_shipping_rounded, label: 'Stock Transfer', route: 'butcher:stockTransfer'),
-          SidebarItem(icon: Icons.inventory_2_rounded, label: 'Internal Inventory', route: 'butcher:inventory'),
-          SidebarItem(icon: Icons.bar_chart_rounded, label: 'Operational Reports', route: 'butcher:reports'),
-          SidebarItem(icon: Icons.receipt_long_rounded, label: 'Unit Expenses', route: 'butcher:expenses'),
-          SidebarItem(icon: Icons.delete_outline_rounded, label: 'Waste Management', route: 'butcher:wasteManagement'),
-          SidebarItem(icon: Icons.folder_open_rounded, label: 'Documents', route: 'butcher:documents'),
-        ]);
-      } else {
-        items.add(SidebarItem(
-          icon: Icons.warehouse_rounded, 
-          label: 'Warehouse Operations', 
-          route: '/warehouse', 
-          isCatchy: user.newlyAddedPermissions.contains('/warehouse') || user.newlyAddedPermissions.contains('/butcher'),
-        ));
-      }
+    if (hasWarehouseAccess) {
+      items.add(SidebarItem(
+        icon: Icons.warehouse_rounded, 
+        label: 'Warehouse Operations', 
+        route: '/warehouse', 
+        isCatchy: user.newlyAddedPermissions.contains('/warehouse'),
+        badgeCount: pendingTransfersCount,
+        category: secInventory,
+      ));
     }
 
     // 4. System Access (Always visible to all users)
-    items.add(SidebarItem(icon: Icons.info_outline_rounded, label: 'About System', route: '/about'));
-    items.add(SidebarItem(icon: Icons.settings_rounded, label: 'User Settings', route: '/settings'));
-    // Removed "My Profile" as requested. Details are now inside System Settings.
+    items.add(SidebarItem(icon: Icons.info_outline_rounded, label: 'About System', route: '/about', category: secAdmin));
+    items.add(SidebarItem(icon: Icons.settings_rounded, label: 'User Settings', route: '/settings', category: secAdmin));
 
     // Special: Super Admin Root Access
     if (roles.contains(UserRole.superAdmin)) {
-      items.add(SidebarItem(icon: Icons.security, label: 'Root Access (Restore)', route: '/admin/super', isCatchy: true));
+      items.add(SidebarItem(icon: Icons.security, label: 'Root Access (Restore)', route: '/admin/super', isCatchy: true, category: secAdmin));
     }
 
-    return _deduplicateItems(items);
+    final uniqueItems = _deduplicateItems(items);
+    
+    // Sort items by click counts if provided, keeping home routes at the very top, and about/settings at the bottom
+    if (clicks != null && clicks.isNotEmpty) {
+      uniqueItems.sort((a, b) {
+        // 1. Home Routes always at the top
+        final aIsHome = a.route == '/admin' || a.route == '/cashier';
+        final bIsHome = b.route == '/admin' || b.route == '/cashier';
+        if (aIsHome && !bIsHome) return -1;
+        if (!aIsHome && bIsHome) return 1;
+
+        // 2. Settings / About always at the bottom
+        final aIsBottom = a.route == '/settings' || a.route == '/about' || a.route == '/admin/super';
+        final bIsBottom = b.route == '/settings' || b.route == '/about' || b.route == '/admin/super';
+        if (aIsBottom && !bIsBottom) return 1;
+        if (!aIsBottom && bIsBottom) return -1;
+
+        // 3. Sort by clicks descending
+        final aClicks = clicks[a.route] ?? 0;
+        final bClicks = clicks[b.route] ?? 0;
+        
+        if (aClicks != bClicks) {
+          return bClicks.compareTo(aClicks);
+        }
+        
+        // 4. Preserve original relative ordering for ties (we just return 0 to maintain stability, though Dart's sort is not guaranteed stable prior to 2.12. In modern Dart it is stable).
+        return 0;
+      });
+    }
+
+    return uniqueItems;
   }
 
   static List<Map<String, String>> getAllAvailableDuties() {
@@ -174,13 +228,13 @@ class MenuService {
       {'route': '/admin/documents', 'label': 'Compliance Documents'},
       {'route': '/admin/debts', 'label': 'Debt Tracker'},
       {'route': '/admin/stock', 'label': 'Master Stock Control'},
+      {'route': '/warehouse', 'label': 'Warehouse Operations Access'},
       {'route': '/admin/product-report', 'label': 'Product Activity Report'},
       {'route': '/admin/salaries', 'label': 'Salary Management'},
       {'route': '/admin/staff', 'label': 'Staff Management'},
       {'route': '/admin/recents', 'label': 'Company Recents'},
       {'route': '/admin/maintenance', 'label': 'System Maintenance'},
       {'route': '/cashier', 'label': 'Cashier POS Access'},
-      {'route': '/butcher', 'label': 'Butcher Operations Access'},
       {'route': '/settings', 'label': 'System Settings'},
     ];
   }
@@ -190,8 +244,11 @@ class MenuService {
     return items.where((item) => seen.add(item.route)).toList();
   }
 
-  static void navigate(BuildContext context, String route, String currentRoute) {
+  static void navigate(BuildContext context, WidgetRef ref, String route, String currentRoute) {
     if (route == currentRoute) return;
+    
+    // Record click before navigating
+    ref.read(menuClicksProvider.notifier).recordClick(route);
     
     // Ensure we are using the correct Navigator context
     final navigator = Navigator.of(context);
@@ -201,13 +258,10 @@ class MenuService {
   static String getHomeRoute(UserAccount user) {
     switch (user.activePrimaryRole) {
       case UserRole.admin:
+      case UserRole.superAdmin:
         return '/admin';
-      case UserRole.butcher:
-        return '/butcher';
       case UserRole.cashier:
         return '/cashier';
-      case UserRole.superAdmin:
-        return '/admin/super';
     }
   }
 }
@@ -217,13 +271,6 @@ final menuItemsProvider = Provider<List<SidebarItem>>((ref) {
   final user = ref.watch(currentUserProvider);
   if (user == null) return [];
   final pendingCount = ref.watch(pendingIncomingTransfersProvider).length;
-  return MenuService.getMenuItemsForUser(user, pendingTransfersCount: pendingCount);
-});
-
-/// A reactive provider for butcher unit menu items
-final butcherMenuItemsProvider = Provider<List<SidebarItem>>((ref) {
-  final user = ref.watch(currentUserProvider);
-  if (user == null) return [];
-  final pendingCount = ref.watch(pendingIncomingTransfersProvider).length;
-  return MenuService.getMenuItemsForUser(user, inButcherShell: true, pendingTransfersCount: pendingCount);
+  final clicks = ref.watch(menuClicksProvider);
+  return MenuService.getMenuItemsForUser(user, pendingTransfersCount: pendingCount, clicks: clicks);
 });

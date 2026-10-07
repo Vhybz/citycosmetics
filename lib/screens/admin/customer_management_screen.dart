@@ -17,6 +17,7 @@ import '../../services/customer_metrics_provider.dart';
 
 enum CustomerFilterType {
   all,
+  pending,
   special,
   favorites,
   wholesalers,
@@ -76,6 +77,7 @@ class _CustomerManagementScreenState extends ConsumerState<CustomerManagementScr
     // Counts for filter chips
     final totalCount = customers.length;
     final specialCount = customers.where((c) => c.isSpecial).length;
+    final pendingCount = customers.where((c) => c.isPendingApproval).length;
     final favCount = customers.where((c) => c.isFavorite).length;
     final wholesalerCount = customers.where((c) => c.isWholesaler).length;
     final bulkCount = customers.where((c) => c.isBulkPurchaser).length;
@@ -90,7 +92,8 @@ class _CustomerManagementScreenState extends ConsumerState<CustomerManagementScr
         final matchesName = c.name.toLowerCase().contains(query);
         final matchesPhone = c.phone.contains(query) || (c.phone2?.contains(query) ?? false);
         final matchesLocation = c.location?.toLowerCase().contains(query) ?? false;
-        if (!matchesName && !matchesPhone && !matchesLocation) {
+        final matchesBusiness = c.businessName?.toLowerCase().contains(query) ?? false;
+        if (!matchesName && !matchesPhone && !matchesLocation && !matchesBusiness) {
           return false;
         }
       }
@@ -98,6 +101,9 @@ class _CustomerManagementScreenState extends ConsumerState<CustomerManagementScr
       // 2. Type Filter Chip
       switch (_selectedFilter) {
         case CustomerFilterType.all:
+          break;
+        case CustomerFilterType.pending:
+          if (!c.isPendingApproval) return false;
           break;
         case CustomerFilterType.special:
           if (!c.isSpecial) return false;
@@ -160,7 +166,7 @@ class _CustomerManagementScreenState extends ConsumerState<CustomerManagementScr
             userRole: user.activePrimaryRole.name.toUpperCase(),
             currentRoute: currentRoute,
             items: MenuService.getMenuItemsForUser(user),
-            onTap: (route) => MenuService.navigate(context, route, currentRoute),
+            onTap: (route) => MenuService.navigate(context, ref, route, currentRoute),
           ),
         ),
         body: Row(
@@ -172,7 +178,7 @@ class _CustomerManagementScreenState extends ConsumerState<CustomerManagementScr
                 userRole: user.activePrimaryRole.name.toUpperCase(),
                 currentRoute: currentRoute,
                 items: MenuService.getMenuItemsForUser(user),
-                onTap: (route) => MenuService.navigate(context, route, currentRoute),
+                onTap: (route) => MenuService.navigate(context, ref, route, currentRoute),
               ),
             Expanded(
               child: SingleChildScrollView(
@@ -353,6 +359,15 @@ class _CustomerManagementScreenState extends ConsumerState<CustomerManagementScr
                 selected: _selectedFilter == CustomerFilterType.all,
                 color: theme.colorScheme.primary,
                 onSelected: () => setState(() => _selectedFilter = CustomerFilterType.all),
+              ),
+              const SizedBox(width: 8),
+              _buildFilterChip(
+                label: 'Pending Approvals',
+                count: pendingCount,
+                icon: Icons.how_to_reg_rounded,
+                selected: _selectedFilter == CustomerFilterType.pending,
+                color: Colors.orange,
+                onSelected: () => setState(() => _selectedFilter = _selectedFilter == CustomerFilterType.pending ? CustomerFilterType.all : CustomerFilterType.pending),
               ),
               const SizedBox(width: 8),
               _buildFilterChip(

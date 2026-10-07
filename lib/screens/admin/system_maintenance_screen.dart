@@ -33,7 +33,7 @@ class SystemMaintenanceScreen extends ConsumerWidget {
           userRole: user.activePrimaryRole.name.toUpperCase(),
           currentRoute: currentRoute,
           items: menuItems,
-          onTap: (route) => MenuService.navigate(context, route, currentRoute),
+          onTap: (route) => MenuService.navigate(context, ref, route, currentRoute),
         ),
       ),
       body: Row(
@@ -45,7 +45,7 @@ class SystemMaintenanceScreen extends ConsumerWidget {
               userRole: user.activePrimaryRole.name.toUpperCase(),
               currentRoute: currentRoute,
               items: menuItems,
-              onTap: (route) => MenuService.navigate(context, route, currentRoute),
+              onTap: (route) => MenuService.navigate(context, ref, route, currentRoute),
             ),
           Expanded(
             child: SingleChildScrollView(
@@ -61,7 +61,7 @@ class SystemMaintenanceScreen extends ConsumerWidget {
                     subtitle: 'Set all product stock quantities to zero. Useful for seasonal restarts.',
                     icon: Icons.inventory_2_outlined,
                     btnText: 'CLEAR ALL STOCK',
-                    onPressed: () => _confirmAction(context, 'Clear Inventory', 'This will set all meat stock levels to 0kg. Continue?', () {
+                    onPressed: () => _confirmAction(context, 'Clear Inventory', 'This will set all cosmetic product stock levels to 0 Pcs. Continue?', () {
                       ref.read(productsFutureProvider.notifier).clearAllStock();
                       ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Inventory levels reset to zero.')));
                     }),

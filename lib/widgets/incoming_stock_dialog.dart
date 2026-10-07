@@ -297,7 +297,7 @@ class _IncomingStockDialogState extends ConsumerState<IncomingStockDialog> {
                 children: [
                   _detailRow(context, 'Item', transfer.meatType),
                   _detailRow(context, 'Weight', '${transfer.weight}kg'),
-                  _detailRow(context, 'Source', 'Butcher House'),
+                  _detailRow(context, 'Source', 'Central Warehouse'),
                 ],
               ),
             ),

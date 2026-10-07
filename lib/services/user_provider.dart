@@ -262,22 +262,13 @@ class UserNotifier extends StateNotifier<List<UserAccount>> {
 
   Future<void> deleteUser(String userId) async {
     try {
-      // 1. Attempt absolute hard delete (wipes from database)
-      await service.hardDeleteUser(userId);
-      
-      // 2. Remove from local list
+      // Soft Delete: Mark account as deleted (is_deleted = true, status = suspended).
+      // Keeps database records (sales, attendance, audit history) intact while revoking app access.
+      await service.deleteUser(userId);
       state = state.where((u) => u.id != userId).toList();
     } catch (e) {
-      debugPrint('Hard Delete failed, attempting Ghost Delete fallback: $e');
-      try {
-        // Fallback: If hard delete fails (usually due to sales history),
-        // we use a "Ghost Delete" where we mark it as deleted and hide it everywhere.
-        await service.deleteUser(userId); // Sets is_deleted = true
-        state = state.where((u) => u.id != userId).toList();
-      } catch (innerErr) {
-        debugPrint('Ghost Delete fallback failed: $innerErr');
-        rethrow;
-      }
+      debugPrint('Delete User Error: $e');
+      rethrow;
     }
   }
 

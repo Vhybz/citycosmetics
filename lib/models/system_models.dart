@@ -1,4 +1,4 @@
-import 'sale_model.dart';
+import 'package:citypos/models/sale_model.dart';
 
 class AuditLog {
   final String id;

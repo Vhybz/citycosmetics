@@ -15,6 +15,8 @@ import '../../services/branch_provider.dart';
 import '../../widgets/role_pop_scope.dart';
 import '../../services/sms_service.dart';
 import '../../widgets/passcode_guard.dart';
+import '../../services/attendance_service.dart';
+import '../../services/report_service.dart';
 
 class StaffManagementScreen extends ConsumerStatefulWidget {
   const StaffManagementScreen({super.key});
@@ -23,18 +25,26 @@ class StaffManagementScreen extends ConsumerStatefulWidget {
   ConsumerState<StaffManagementScreen> createState() => _StaffManagementScreenState();
 }
 
-class _StaffManagementScreenState extends ConsumerState<StaffManagementScreen> {
+class _StaffManagementScreenState extends ConsumerState<StaffManagementScreen> with SingleTickerProviderStateMixin {
   final TextEditingController _searchController = TextEditingController();
   String _searchQuery = '';
+
+  late TabController _tabController;
+  DateTimeRange? _attendanceDateRange;
+  String _selectedAttendanceUser = 'ALL';
+  String _selectedAttendanceRole = 'ALL';
+  String _selectedAttendanceStatus = 'ALL';
 
   @override
   void initState() {
     super.initState();
+    _tabController = TabController(length: 2, vsync: this);
     Future.microtask(() => ref.read(userProvider.notifier).loadUsers());
   }
 
   @override
   void dispose() {
+    _tabController.dispose();
     _searchController.dispose();
     super.dispose();
   }
@@ -78,7 +88,7 @@ class _StaffManagementScreenState extends ConsumerState<StaffManagementScreen> {
                     userRole: user.activePrimaryRole.toString().split('.').last.toUpperCase(),
                     currentRoute: currentRoute,
                     items: MenuService.getMenuItemsForUser(user),
-                    onTap: (route) => MenuService.navigate(context, route, currentRoute),
+                    onTap: (route) => MenuService.navigate(context, ref, route, currentRoute),
                   ),
                 ),
           body: Row(
@@ -90,82 +100,34 @@ class _StaffManagementScreenState extends ConsumerState<StaffManagementScreen> {
                   userRole: user.activePrimaryRole.toString().split('.').last.toUpperCase(),
                   currentRoute: currentRoute,
                   items: MenuService.getMenuItemsForUser(user),
-                  onTap: (route) => MenuService.navigate(context, route, currentRoute),
+                  onTap: (route) => MenuService.navigate(context, ref, route, currentRoute),
                 ),
               Expanded(
-                child: RefreshIndicator(
-                  onRefresh: () => ref.read(userProvider.notifier).loadUsers(),
-                  child: CustomScrollView(
-                    slivers: [
-                      SliverPadding(
-                        padding: const EdgeInsets.all(AppSpacing.l),
-                        sliver: SliverList(
-                          delegate: SliverChildListDelegate([
-                            _buildHeader(context, ref),
-                            const SizedBox(height: AppSpacing.m),
-                            _buildSearchBar(context),
-                            const SizedBox(height: AppSpacing.m),
-                            _buildSummaryInfo(context, users, pendingUsers),
-                            const SizedBox(height: AppSpacing.l),
-                          ]),
-                        ),
-                      ),
-
-                      if (isLoading && users.isEmpty)
-                        const SliverFillRemaining(
-                          child: Center(child: CircularProgressIndicator()),
-                        )
-                      else if (users.isEmpty || (filteredUsers.isEmpty && _searchQuery.isNotEmpty))
-                        SliverFillRemaining(
-                          hasScrollBody: false,
-                          child: _buildEmptyState(context, user),
-                        )
-                      else ...[
-                        if (pendingUsers.isNotEmpty) ...[
-                          _buildSectionHeaderSliver('Pending Approvals', theme.colorScheme.secondary),
-                          SliverPadding(
-                            padding: const EdgeInsets.symmetric(horizontal: AppSpacing.l),
-                            sliver: SliverList(
-                              delegate: SliverChildBuilderDelegate(
-                                (context, index) => _buildPendingUserCard(
-                                  context, 
-                                  ref, 
-                                  pendingUsers[index], 
-                                  branchesAsync.value ?? [], 
-                                  theme
-                                ),
-                                childCount: pendingUsers.length,
-                              ),
-                            ),
-                          ),
+                child: Column(
+                  children: [
+                    Container(
+                      color: theme.colorScheme.surface,
+                      child: TabBar(
+                        controller: _tabController,
+                        labelColor: theme.colorScheme.primary,
+                        unselectedLabelColor: theme.colorScheme.onSurfaceVariant,
+                        indicatorColor: theme.colorScheme.primary,
+                        tabs: const [
+                          Tab(icon: Icon(Icons.people_alt_rounded, size: 18), text: 'Staff Directory'),
+                          Tab(icon: Icon(Icons.how_to_reg_rounded, size: 18), text: 'Attendance Records'),
                         ],
-                        
-                        _buildSectionHeaderSliver('Team Members', theme.colorScheme.onSurface),
-                        SliverPadding(
-                          padding: const EdgeInsets.symmetric(horizontal: AppSpacing.l),
-                          sliver: SliverGrid(
-                            gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
-                              crossAxisCount: _getCrossAxisCount(context),
-                              crossAxisSpacing: AppSpacing.m,
-                              mainAxisSpacing: AppSpacing.m,
-                              childAspectRatio: 2.8,
-                            ),
-                            delegate: SliverChildBuilderDelegate(
-                              (context, index) => _buildUserCard(
-                                context, 
-                                ref, 
-                                approvedUsers[index], 
-                                branchesAsync.value ?? [], 
-                                theme
-                              ),
-                              childCount: approvedUsers.length,
-                            ),
-                          ),
-                        ),
-                        const SliverToBoxAdapter(child: SizedBox(height: 100)),
-                      ],
-                    ],
-                  ),
+                      ),
+                    ),
+                    Expanded(
+                      child: TabBarView(
+                        controller: _tabController,
+                        children: [
+                          _buildStaffDirectoryTab(context, ref, theme, user, users, isLoading, branchesAsync, filteredUsers, pendingUsers, approvedUsers),
+                          _buildAttendanceTab(context, ref),
+                        ],
+                      ),
+                    ),
+                  ],
                 ),
               ),
             ],
@@ -181,6 +143,324 @@ class _StaffManagementScreenState extends ConsumerState<StaffManagementScreen> {
     if (width > 1200) return 3;
     if (width > 800) return 2;
     return 1;
+  }
+
+  Widget _buildStaffDirectoryTab(
+    BuildContext context,
+    WidgetRef ref,
+    ThemeData theme,
+    UserAccount user,
+    List<UserAccount> users,
+    bool isLoading,
+    AsyncValue<List<Branch>> branchesAsync,
+    List<UserAccount> filteredUsers,
+    List<UserAccount> pendingUsers,
+    List<UserAccount> approvedUsers,
+  ) {
+    return RefreshIndicator(
+      onRefresh: () => ref.read(userProvider.notifier).loadUsers(),
+      child: CustomScrollView(
+        slivers: [
+          SliverPadding(
+            padding: const EdgeInsets.all(AppSpacing.l),
+            sliver: SliverList(
+              delegate: SliverChildListDelegate([
+                _buildHeader(context, ref),
+                const SizedBox(height: AppSpacing.m),
+                _buildSearchBar(context),
+                const SizedBox(height: AppSpacing.m),
+                _buildSummaryInfo(context, users, pendingUsers),
+                const SizedBox(height: AppSpacing.l),
+              ]),
+            ),
+          ),
+          if (isLoading && users.isEmpty)
+            const SliverFillRemaining(
+              child: Center(child: CircularProgressIndicator()),
+            )
+          else if (users.isEmpty || (filteredUsers.isEmpty && _searchQuery.isNotEmpty))
+            SliverFillRemaining(
+              hasScrollBody: false,
+              child: _buildEmptyState(context, user),
+            )
+          else ...[
+            if (pendingUsers.isNotEmpty) ...[
+              _buildSectionHeaderSliver('Pending Approvals', theme.colorScheme.secondary),
+              SliverPadding(
+                padding: const EdgeInsets.symmetric(horizontal: AppSpacing.l),
+                sliver: SliverList(
+                  delegate: SliverChildBuilderDelegate(
+                    (context, index) => _buildPendingUserCard(
+                      context,
+                      ref,
+                      pendingUsers[index],
+                      branchesAsync.value ?? [],
+                      theme,
+                    ),
+                    childCount: pendingUsers.length,
+                  ),
+                ),
+              ),
+            ],
+            _buildSectionHeaderSliver('Team Members', theme.colorScheme.onSurface),
+            SliverPadding(
+              padding: const EdgeInsets.symmetric(horizontal: AppSpacing.l),
+              sliver: SliverGrid(
+                gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
+                  crossAxisCount: _getCrossAxisCount(context),
+                  crossAxisSpacing: AppSpacing.m,
+                  mainAxisSpacing: AppSpacing.m,
+                  childAspectRatio: 2.8,
+                ),
+                delegate: SliverChildBuilderDelegate(
+                  (context, index) => _buildUserCard(
+                    context,
+                    ref,
+                    approvedUsers[index],
+                    branchesAsync.value ?? [],
+                    theme,
+                  ),
+                  childCount: approvedUsers.length,
+                ),
+              ),
+            ),
+            const SliverToBoxAdapter(child: SizedBox(height: 100)),
+          ],
+        ],
+      ),
+    );
+  }
+
+  Widget _buildAttendanceTab(BuildContext context, WidgetRef ref) {
+    final theme = Theme.of(context);
+    final attendanceState = ref.watch(attendanceRecordsProvider);
+    final allUsers = ref.watch(userProvider);
+    final allRecords = attendanceState.value ?? [];
+
+    final now = DateTime.now();
+    final DateTime start = _attendanceDateRange?.start ?? DateTime(now.year, now.month, now.day);
+    final DateTime end = _attendanceDateRange?.end ?? DateTime(now.year, now.month, now.day, 23, 59, 59);
+
+    final filtered = allRecords.where((r) {
+      final isAfterStart = r.date.isAfter(start.subtract(const Duration(seconds: 1)));
+      final isBeforeEnd = r.date.isBefore(end.add(const Duration(seconds: 1)));
+      final matchesUser = _selectedAttendanceUser == 'ALL' || r.userId == _selectedAttendanceUser;
+      final matchesRole = _selectedAttendanceRole == 'ALL' || r.userRole.toUpperCase() == _selectedAttendanceRole;
+      final matchesStatus = _selectedAttendanceStatus == 'ALL' || r.status == _selectedAttendanceStatus;
+
+      return isAfterStart && isBeforeEnd && matchesUser && matchesRole && matchesStatus;
+    }).toList();
+
+    final onTimeCount = filtered.where((r) => r.status == 'on_time').length;
+    final lateCount = filtered.where((r) => r.status == 'late').length;
+    final autoOutCount = filtered.where((r) => r.status == 'auto_checked_out').length;
+
+    final String periodLabel = _attendanceDateRange == null
+        ? 'Today (${DateFormat('MMM dd, yyyy').format(now)})'
+        : '${DateFormat('MMM dd').format(start)} - ${DateFormat('MMM dd, yyyy').format(end)}';
+
+    return SingleChildScrollView(
+      padding: const EdgeInsets.all(AppSpacing.l),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Wrap(
+            alignment: WrapAlignment.spaceBetween,
+            crossAxisAlignment: WrapCrossAlignment.center,
+            spacing: AppSpacing.m,
+            runSpacing: AppSpacing.m,
+            children: [
+              Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text('Staff Attendance & GPS Audit', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 18, color: theme.colorScheme.onSurface)),
+                  Text('Location-verified check-ins, shift hours & GPS distance', style: TextStyle(color: theme.colorScheme.onSurfaceVariant, fontSize: 12)),
+                ],
+              ),
+              ElevatedButton.icon(
+                onPressed: filtered.isEmpty ? null : () => ReportService.generateAttendanceReport(filtered, periodLabel),
+                icon: const Icon(Icons.print_rounded, size: 18),
+                label: const Text('PRINT ATTENDANCE REPORT'),
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: theme.colorScheme.primary,
+                  foregroundColor: Colors.white,
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: AppSpacing.m),
+
+          Wrap(
+            spacing: AppSpacing.m,
+            runSpacing: AppSpacing.m,
+            children: [
+              _miniStatCard(context, 'Check-Ins', '${filtered.length}', Icons.how_to_reg_rounded, Colors.blue),
+              _miniStatCard(context, 'On Time', '$onTimeCount', Icons.check_circle_rounded, Colors.green),
+              _miniStatCard(context, 'Late Check-Ins', '$lateCount', Icons.warning_amber_rounded, Colors.orange),
+              _miniStatCard(context, 'Auto Checked-Out', '$autoOutCount', Icons.output_rounded, Colors.purple),
+            ],
+          ),
+          const SizedBox(height: AppSpacing.l),
+
+          Card(
+            child: Padding(
+              padding: const EdgeInsets.all(AppSpacing.m),
+              child: SingleChildScrollView(
+                scrollDirection: Axis.horizontal,
+                child: Row(
+                  children: [
+                    OutlinedButton.icon(
+                      onPressed: () async {
+                        final picked = await showDateRangePicker(
+                          context: context,
+                          firstDate: DateTime(2024),
+                          lastDate: DateTime.now().add(const Duration(days: 1)),
+                          initialDateRange: _attendanceDateRange ?? DateTimeRange(start: now, end: now),
+                        );
+                        if (picked != null) {
+                          setState(() => _attendanceDateRange = picked);
+                        }
+                      },
+                      icon: const Icon(Icons.date_range_rounded, size: 18),
+                      label: Text(_attendanceDateRange == null ? 'Today' : '${DateFormat('MMM dd').format(start)} - ${DateFormat('MMM dd').format(end)}'),
+                    ),
+                    if (_attendanceDateRange != null) ...[
+                      const SizedBox(width: 6),
+                      IconButton(
+                        icon: const Icon(Icons.clear, size: 18),
+                        onPressed: () => setState(() => _attendanceDateRange = null),
+                        tooltip: 'Reset Date Filter',
+                      ),
+                    ],
+                    const SizedBox(width: 16),
+
+                    SizedBox(
+                      width: 170,
+                      child: DropdownButtonFormField<String>(
+                        isExpanded: true,
+                        initialValue: _selectedAttendanceUser,
+                        decoration: const InputDecoration(labelText: 'Staff Member', isDense: true, contentPadding: EdgeInsets.symmetric(horizontal: 10, vertical: 8)),
+                        items: [
+                          const DropdownMenuItem(value: 'ALL', child: Text('All Staff Members', overflow: TextOverflow.ellipsis)),
+                          ...allUsers.where((u) => !u.isDeleted).map((u) => DropdownMenuItem(
+                            value: u.id,
+                            child: Text(u.name, overflow: TextOverflow.ellipsis),
+                          )),
+                        ],
+                        onChanged: (v) => setState(() => _selectedAttendanceUser = v ?? 'ALL'),
+                      ),
+                    ),
+                    const SizedBox(width: 12),
+
+                    SizedBox(
+                      width: 130,
+                      child: DropdownButtonFormField<String>(
+                        isExpanded: true,
+                        initialValue: _selectedAttendanceRole,
+                        decoration: const InputDecoration(labelText: 'Role', isDense: true, contentPadding: EdgeInsets.symmetric(horizontal: 10, vertical: 8)),
+                        items: const [
+                          DropdownMenuItem(value: 'ALL', child: Text('All Roles', overflow: TextOverflow.ellipsis)),
+                          DropdownMenuItem(value: 'CASHIER', child: Text('Cashier', overflow: TextOverflow.ellipsis)),
+                          DropdownMenuItem(value: 'ADMIN', child: Text('Admin', overflow: TextOverflow.ellipsis)),
+                          DropdownMenuItem(value: 'WAREHOUSE', child: Text('Warehouse', overflow: TextOverflow.ellipsis)),
+                        ],
+                        onChanged: (v) => setState(() => _selectedAttendanceRole = v ?? 'ALL'),
+                      ),
+                    ),
+                    const SizedBox(width: 12),
+
+                    SizedBox(
+                      width: 150,
+                      child: DropdownButtonFormField<String>(
+                        isExpanded: true,
+                        initialValue: _selectedAttendanceStatus,
+                        decoration: const InputDecoration(labelText: 'Status', isDense: true, contentPadding: EdgeInsets.symmetric(horizontal: 10, vertical: 8)),
+                        items: const [
+                          DropdownMenuItem(value: 'ALL', child: Text('All Statuses', overflow: TextOverflow.ellipsis)),
+                          DropdownMenuItem(value: 'on_time', child: Text('On Time', overflow: TextOverflow.ellipsis)),
+                          DropdownMenuItem(value: 'late', child: Text('Late', overflow: TextOverflow.ellipsis)),
+                          DropdownMenuItem(value: 'checked_out', child: Text('Checked Out', overflow: TextOverflow.ellipsis)),
+                          DropdownMenuItem(value: 'auto_checked_out', child: Text('Auto Checked Out', overflow: TextOverflow.ellipsis)),
+                        ],
+                        onChanged: (v) => setState(() => _selectedAttendanceStatus = v ?? 'ALL'),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+          ),
+          const SizedBox(height: AppSpacing.l),
+
+          if (filtered.isEmpty)
+            Card(
+              child: Padding(
+                padding: const EdgeInsets.all(40.0),
+                child: Center(
+                  child: Column(
+                    children: [
+                      Icon(Icons.event_busy_rounded, size: 48, color: theme.dividerColor),
+                      const SizedBox(height: 12),
+                      Text('No attendance records for the selected filters.', style: TextStyle(color: theme.colorScheme.onSurfaceVariant)),
+                    ],
+                  ),
+                ),
+              ),
+            )
+          else
+            Card(
+              clipBehavior: Clip.antiAlias,
+              child: SingleChildScrollView(
+                scrollDirection: Axis.horizontal,
+                child: DataTable(
+                  columns: const [
+                    DataColumn(label: Text('Date', style: TextStyle(fontWeight: FontWeight.bold))),
+                    DataColumn(label: Text('Staff Member', style: TextStyle(fontWeight: FontWeight.bold))),
+                    DataColumn(label: Text('Role', style: TextStyle(fontWeight: FontWeight.bold))),
+                    DataColumn(label: Text('Check-In', style: TextStyle(fontWeight: FontWeight.bold))),
+                    DataColumn(label: Text('Check-Out', style: TextStyle(fontWeight: FontWeight.bold))),
+                    DataColumn(label: Text('Worked', style: TextStyle(fontWeight: FontWeight.bold))),
+                    DataColumn(label: Text('Location GPS', style: TextStyle(fontWeight: FontWeight.bold))),
+                    DataColumn(label: Text('Status', style: TextStyle(fontWeight: FontWeight.bold))),
+                  ],
+                  rows: filtered.map((r) {
+                    final Color statusColor = r.status == 'on_time'
+                        ? Colors.green
+                        : (r.status == 'late' ? Colors.orange : Colors.blue);
+
+                    return DataRow(
+                      cells: [
+                        DataCell(Text(DateFormat('MMM dd, yyyy').format(r.date))),
+                        DataCell(Text(r.userName, style: const TextStyle(fontWeight: FontWeight.bold))),
+                        DataCell(Text(r.userRole)),
+                        DataCell(Text(DateFormat('hh:mm a').format(r.checkInTime))),
+                        DataCell(Text(r.checkOutTime != null ? DateFormat('hh:mm a').format(r.checkOutTime!) : 'Active Shift')),
+                        DataCell(Text(r.formattedHoursWorked)),
+                        DataCell(Row(
+                          children: [
+                            const Icon(Icons.verified_user_rounded, color: Colors.green, size: 14),
+                            const SizedBox(width: 4),
+                            Text('${r.distanceMeters.toInt()}m from shop'),
+                          ],
+                        )),
+                        DataCell(Container(
+                          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                          decoration: BoxDecoration(
+                            color: statusColor.withValues(alpha: 0.12),
+                            borderRadius: BorderRadius.circular(10),
+                            border: Border.all(color: statusColor.withValues(alpha: 0.5)),
+                          ),
+                          child: Text(r.statusDisplay, style: TextStyle(color: statusColor, fontWeight: FontWeight.bold, fontSize: 10)),
+                        )),
+                      ],
+                    );
+                  }).toList(),
+                ),
+              ),
+            ),
+        ],
+      ),
+    );
   }
 
   Widget _buildSectionHeaderSliver(String title, Color color) {
@@ -685,7 +965,7 @@ class _StaffManagementScreenState extends ConsumerState<StaffManagementScreen> {
                 initialValue: selectedRole,
                 decoration: const InputDecoration(labelText: 'Temporary Role'),
                 items: availableRoles
-                    .map((r) => DropdownMenuItem(value: r, child: Text(r.name.toUpperCase())))
+                    .map((r) => DropdownMenuItem(value: r, child: Text(r == UserRole.superAdmin ? 'SUPER ADMIN' : r.name.toUpperCase())))
                     .toList(),
                 onChanged: (v) => setState(() => selectedRole = v!),
               ),
@@ -878,7 +1158,6 @@ class _StaffManagementScreenState extends ConsumerState<StaffManagementScreen> {
     switch (role) {
       case UserRole.superAdmin: return Colors.black;
       case UserRole.admin: return Colors.purple;
-      case UserRole.butcher: return AppColors.primaryMaroon;
       case UserRole.cashier: return Colors.blue;
     }
   }
@@ -887,7 +1166,6 @@ class _StaffManagementScreenState extends ConsumerState<StaffManagementScreen> {
     switch (role) {
       case UserRole.superAdmin: return Icons.security;
       case UserRole.admin: return Icons.admin_panel_settings;
-      case UserRole.butcher: return Icons.restaurant;
       case UserRole.cashier: return Icons.point_of_sale;
     }
   }
@@ -933,7 +1211,7 @@ class _StaffManagementScreenState extends ConsumerState<StaffManagementScreen> {
                   DropdownButtonFormField<UserRole>(
                     initialValue: selectedRole,
                     items: UserRole.values.where((r) => r != UserRole.superAdmin)
-                        .map((r) => DropdownMenuItem(value: r, child: Text(r.name.toUpperCase()))).toList(),
+                        .map((r) => DropdownMenuItem(value: r, child: Text(r == UserRole.superAdmin ? 'SUPER ADMIN' : r.name.toUpperCase()))).toList(),
                     onChanged: (v) => setState(() => selectedRole = v!),
                     decoration: const InputDecoration(labelText: 'Role'),
                   ),
@@ -1001,7 +1279,7 @@ class _StaffManagementScreenState extends ConsumerState<StaffManagementScreen> {
                 const SizedBox(height: 8),
                 DropdownButtonFormField<UserRole>(
                   initialValue: selectedPrimary,
-                  items: UserRole.values.map((r) => DropdownMenuItem(value: r, child: Text(r.name.toUpperCase()))).toList(),
+                  items: UserRole.values.map((r) => DropdownMenuItem(value: r, child: Text(r == UserRole.superAdmin ? 'SUPER ADMIN' : r.name.toUpperCase()))).toList(),
                   onChanged: (v) => setState(() => selectedPrimary = v!),
                   decoration: const InputDecoration(labelText: 'Primary Role', border: OutlineInputBorder()),
                 ),

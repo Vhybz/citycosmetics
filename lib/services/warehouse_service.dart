@@ -115,6 +115,24 @@ class WarehouseBatchNotifier extends StateNotifier<AsyncValue<List<WarehouseBatc
       debugPrint('Error adding warehouse batch: $e');
     }
   }
+
+  Future<void> deleteBatch(String batchId) async {
+    try {
+      await _service.deleteBatch(batchId);
+      _startSubscription();
+    } catch (e) {
+      debugPrint('Error deleting batch: $e');
+    }
+  }
+
+  Future<void> deleteBatchesByNumber(String batchNumber) async {
+    try {
+      await _service.deleteBatchesByNumber(batchNumber);
+      _startSubscription();
+    } catch (e) {
+      debugPrint('Error deleting batches by number: $e');
+    }
+  }
 }
 
 final warehouseBatchProvider = StateNotifierProvider<WarehouseBatchNotifier, AsyncValue<List<WarehouseBatch>>>((ref) {
@@ -125,3 +143,132 @@ final warehouseBatchProvider = StateNotifierProvider<WarehouseBatchNotifier, Asy
 // Legacy Alias Provider
 typedef MeatBatchNotifier = WarehouseBatchNotifier;
 final meatBatchProvider = warehouseBatchProvider;
+
+class WarehouseIntakeNotifier extends StateNotifier<AsyncValue<List<WarehouseIntakeRecord>>> {
+  final SupabaseWarehouseService _service;
+  final Ref ref;
+  StreamSubscription? _subscription;
+
+  WarehouseIntakeNotifier(this._service, this.ref) : super(const AsyncValue.loading()) {
+    _startSubscription();
+  }
+
+  void _startSubscription() {
+    _subscription?.cancel();
+    final user = ref.read(currentUserProvider);
+    if (user?.branchCode != null) {
+      _subscription = _service.watchIntakes(user!.branchCode!).listen(
+        (intakes) => state = AsyncValue.data(intakes),
+        onError: (e, st) => debugPrint('Intakes Stream Error: $e'),
+        cancelOnError: false,
+      );
+    } else {
+      state = const AsyncValue.data([]);
+    }
+  }
+
+  @override
+  void dispose() {
+    _subscription?.cancel();
+    super.dispose();
+  }
+
+  Future<void> confirmIntake(WarehouseIntakeRecord intake) async {
+    try {
+      final user = ref.read(currentUserProvider);
+      if (state.hasValue) {
+        final currentList = state.value ?? [];
+        final filtered = currentList.where((i) => i.id != intake.id && i.intakeNumber != intake.intakeNumber).toList();
+        state = AsyncValue.data([intake, ...filtered]);
+      }
+      await _service.confirmIntake(intake, user?.branchCode);
+      _startSubscription();
+    } catch (e) {
+      debugPrint('Error confirming intake: $e');
+      rethrow;
+    }
+  }
+
+  Future<void> updateIntake(WarehouseIntakeRecord intake) async {
+    try {
+      await _service.updateIntake(intake);
+      if (state.hasValue) {
+        final currentList = state.value ?? [];
+        state = AsyncValue.data(
+          currentList.map((i) => (i.id == intake.id || i.intakeNumber == intake.intakeNumber) ? intake : i).toList(),
+        );
+      }
+      _startSubscription();
+    } catch (e) {
+      debugPrint('Error updating intake: $e');
+      rethrow;
+    }
+  }
+
+  Future<void> deleteIntake(WarehouseIntakeRecord intake) async {
+    try {
+      await _service.deleteIntake(intake);
+      if (state.hasValue) {
+        final currentList = state.value ?? [];
+        state = AsyncValue.data(
+          currentList.where((i) => i.id != intake.id && i.intakeNumber != intake.intakeNumber).toList(),
+        );
+      }
+      _startSubscription();
+    } catch (e) {
+      debugPrint('Error deleting intake: $e');
+      rethrow;
+    }
+  }
+}
+
+final warehouseIntakeProvider = StateNotifierProvider<WarehouseIntakeNotifier, AsyncValue<List<WarehouseIntakeRecord>>>((ref) {
+  final service = ref.watch(supabaseWarehouseServiceProvider);
+  return WarehouseIntakeNotifier(service, ref);
+});
+
+class WarehouseDispatchNotifier extends StateNotifier<AsyncValue<List<WarehouseDispatchRecord>>> {
+  final SupabaseWarehouseService _service;
+  final Ref ref;
+  StreamSubscription? _subscription;
+
+  WarehouseDispatchNotifier(this._service, this.ref) : super(const AsyncValue.loading()) {
+    _startSubscription();
+  }
+
+  void _startSubscription() {
+    _subscription?.cancel();
+    final user = ref.read(currentUserProvider);
+    if (user?.branchCode != null) {
+      _subscription = _service.watchDispatches(user!.branchCode!).listen(
+        (dispatches) => state = AsyncValue.data(dispatches),
+        onError: (e, st) => debugPrint('Dispatches Stream Error: $e'),
+        cancelOnError: false,
+      );
+    } else {
+      state = const AsyncValue.data([]);
+    }
+  }
+
+  @override
+  void dispose() {
+    _subscription?.cancel();
+    super.dispose();
+  }
+
+  Future<void> confirmDispatch(WarehouseDispatchRecord dispatch) async {
+    try {
+      final user = ref.read(currentUserProvider);
+      await _service.confirmDispatch(dispatch, user?.branchCode);
+      _startSubscription();
+    } catch (e) {
+      debugPrint('Error confirming dispatch: $e');
+      rethrow;
+    }
+  }
+}
+
+final warehouseDispatchProvider = StateNotifierProvider<WarehouseDispatchNotifier, AsyncValue<List<WarehouseDispatchRecord>>>((ref) {
+  final service = ref.watch(supabaseWarehouseServiceProvider);
+  return WarehouseDispatchNotifier(service, ref);
+});

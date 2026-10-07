@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../core/constants.dart';
+import '../../core/uuid_utils.dart';
 import '../../models/warehouse_models.dart';
 import '../../services/warehouse_service.dart';
 
@@ -32,7 +33,7 @@ class _ShipmentIntakeScreenState extends ConsumerState<ShipmentIntakeScreen> {
   void _submitShipment() {
     if (_formKey.currentState?.validate() ?? false) {
       final newShipment = ShipmentLog(
-        id: DateTime.now().millisecondsSinceEpoch.toString(),
+        id: UuidUtils.generate(),
         tagNumber: 'SHIP-${DateTime.now().millisecondsSinceEpoch.toString().substring(7)}',
         supplierName: _supplierController.text.trim(),
         invoiceNumber: _invoiceController.text.trim().isEmpty ? null : _invoiceController.text.trim(),

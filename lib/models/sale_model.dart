@@ -68,6 +68,17 @@ class SaleItem {
   double get total => quantity * priceAtSale;
   double get discount => (originalPrice - priceAtSale) * quantity;
 
+  /// Quantity converted to base pieces (Pcs) based on selected unit
+  double get quantityInPieces {
+    final unitLower = selectedUnit?.trim().toLowerCase();
+    if (unitLower == 'pack' || unitLower == 'packs') {
+      return product.pcsPerPack > 0 ? quantity * product.pcsPerPack : quantity;
+    } else if (unitLower == 'box' || unitLower == 'boxes') {
+      return product.totalPcsPerBox > 0 ? quantity * product.totalPcsPerBox : quantity;
+    }
+    return quantity;
+  }
+
   Map<String, dynamic> toJson() => {
     'product': product.toJson(),
     'quantity': quantity,

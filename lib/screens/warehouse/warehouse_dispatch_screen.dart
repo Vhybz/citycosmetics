@@ -2,10 +2,14 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:intl/intl.dart';
+import '../../widgets/camera_barcode_scanner_dialog.dart';
 import '../../core/constants.dart';
+import '../../core/uuid_utils.dart';
+import '../../services/product_service.dart';
+import '../../services/branch_provider.dart';
+import '../../models/branch_model.dart';
 import '../../models/product.dart';
 import '../../models/warehouse_models.dart';
-import '../../services/product_service.dart';
 import '../../services/user_provider.dart';
 import '../../services/warehouse_service.dart';
 
@@ -28,6 +32,8 @@ class _WarehouseDispatchScreenState extends ConsumerState<WarehouseDispatchScree
   // Item Form Fields
   Product? _selectedProduct;
   final TextEditingController _qtyController = TextEditingController();
+  final TextEditingController _pcsPerBoxController = TextEditingController(text: '12');
+  String _selectedUnit = 'Boxes'; // Default to Boxes as requested
   WarehouseBatch? _fefoSuggestedBatch;
 
   bool _isSubmitting = false;
@@ -37,7 +43,7 @@ class _WarehouseDispatchScreenState extends ConsumerState<WarehouseDispatchScree
     super.initState();
     final randomStr = (1000 + DateTime.now().millisecond % 9000).toString();
     _dispatchNumberController.text = 'DSP-${DateFormat('yyyyMMdd').format(DateTime.now())}-$randomStr';
-    _destinationStoreController.text = 'Main Retail Shop';
+    _destinationStoreController.text = '';
   }
 
   @override
@@ -46,6 +52,7 @@ class _WarehouseDispatchScreenState extends ConsumerState<WarehouseDispatchScree
     _destinationStoreController.dispose();
     _notesController.dispose();
     _qtyController.dispose();
+    _pcsPerBoxController.dispose();
     super.dispose();
   }
 
@@ -76,15 +83,46 @@ class _WarehouseDispatchScreenState extends ConsumerState<WarehouseDispatchScree
       if (product != null) {
         _fefoSuggestedBatch = _findFEFOBatch(product, batches);
         // Pre-fill suggested replenishment quantity
-        final needed = (product.minStoreStock - product.stockQuantity).clamp(1.0, double.infinity);
-        final maxPossible = product.warehouseQuantity;
-        final suggested = needed <= maxPossible ? needed : maxPossible;
-        _qtyController.text = suggested > 0 ? suggested.toInt().toString() : '1';
+        final neededPcs = (product.minStoreStock - product.stockQuantity).clamp(1.0, double.infinity);
+        final maxPossiblePcs = product.warehouseQuantity;
+        final suggestedPcs = neededPcs <= maxPossiblePcs ? neededPcs : maxPossiblePcs;
+        final double pcsPerBox = double.tryParse(_pcsPerBoxController.text.trim()) ?? 12.0;
+
+        if (_selectedUnit == 'Boxes') {
+          final suggestedBoxes = (suggestedPcs / pcsPerBox).ceil();
+          _qtyController.text = suggestedBoxes > 0 ? suggestedBoxes.toString() : '1';
+        } else {
+          _qtyController.text = suggestedPcs > 0 ? suggestedPcs.toInt().toString() : '1';
+        }
       } else {
         _fefoSuggestedBatch = null;
         _qtyController.clear();
       }
     });
+  }
+
+  void _scanBarcodeToSelectProduct(BuildContext context, TextEditingController autocompleteController, List<Product> products, List<WarehouseBatch> batches) {
+    CameraBarcodeScannerDialog.show(
+      context,
+      title: 'Scan Barcode to Dispatch',
+      onScanned: (String raw) {
+        final clean = raw.trim().toLowerCase();
+        final matched = products.where((p) => !p.isDeleted).where((p) {
+          final skuMatch = p.sku != null && p.sku!.toLowerCase() == clean;
+          final idMatch = p.id.toLowerCase() == clean;
+          final nameMatch = p.name.toLowerCase() == clean;
+          return skuMatch || idMatch || nameMatch;
+        }).firstOrNull;
+
+        if (matched == null) {
+          return 'No product found for barcode "$raw"';
+        }
+
+        autocompleteController.text = '${matched.name} (${matched.category}) [WHS: ${matched.stockControlWarehouseDisplay}]';
+        _onProductSelected(matched, batches);
+        return 'Selected: ${matched.name}';
+      },
+    );
   }
 
   void _addItemToDispatch() {
@@ -95,18 +133,29 @@ class _WarehouseDispatchScreenState extends ConsumerState<WarehouseDispatchScree
       return;
     }
 
-    final double qty = double.tryParse(_qtyController.text.trim()) ?? 0.0;
-    if (qty <= 0) {
+    final double inputQty = double.tryParse(_qtyController.text.trim()) ?? 0.0;
+    if (inputQty <= 0) {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(content: Text('Please enter a valid dispatch quantity (> 0).'), backgroundColor: Colors.red),
       );
       return;
     }
 
-    if (qty > _selectedProduct!.warehouseQuantity) {
+    final double pcsPerPack = _selectedProduct!.pcsPerPack > 0 ? _selectedProduct!.pcsPerPack : 12.0;
+    final double packsPerBox = _selectedProduct!.packsPerBox > 0 ? _selectedProduct!.packsPerBox : 10.0;
+    final double pcsPerBoxVal = pcsPerPack * packsPerBox;
+
+    double totalPcs = inputQty;
+    if (_selectedUnit == 'Packs') {
+      totalPcs = inputQty * pcsPerPack;
+    } else if (_selectedUnit == 'Boxes') {
+      totalPcs = inputQty * pcsPerBoxVal;
+    }
+
+    if (totalPcs > _selectedProduct!.warehouseQuantity) {
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
-          content: Text('Cannot dispatch $qty Pcs: Exceeds current Warehouse Stock (${_selectedProduct!.warehouseQuantity.toInt()} Pcs available).'),
+          content: Text('Cannot dispatch ${inputQty.toInt()} $_selectedUnit (${totalPcs.toInt()} Pcs): Exceeds available Warehouse Stock (${_selectedProduct!.warehouseQuantity.toInt()} Pcs available).'),
           backgroundColor: Colors.red,
         ),
       );
@@ -117,7 +166,7 @@ class _WarehouseDispatchScreenState extends ConsumerState<WarehouseDispatchScree
       productId: _selectedProduct!.id,
       productName: _selectedProduct!.name,
       sku: _selectedProduct!.sku ?? _selectedProduct!.id.substring(0, 8),
-      quantityDispatched: qty,
+      quantityDispatched: totalPcs,
       batchNumber: _fefoSuggestedBatch?.batchNumber ?? 'STD-BATCH',
       expiryDate: _fefoSuggestedBatch?.expiryDate,
     );
@@ -130,8 +179,12 @@ class _WarehouseDispatchScreenState extends ConsumerState<WarehouseDispatchScree
       _qtyController.clear();
     });
 
+    final label = _selectedUnit == 'Boxes' 
+        ? '${inputQty.toInt()} Boxes (${totalPcs.toInt()} Pcs)' 
+        : '${totalPcs.toInt()} Pcs';
+
     ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(content: Text('${newItem.productName} (${newItem.quantityDispatched.toInt()} Pcs) added to dispatch list.'), backgroundColor: Colors.green),
+      SnackBar(content: Text('${newItem.productName} ($label) added to dispatch list.'), backgroundColor: Colors.green),
     );
   }
 
@@ -152,7 +205,7 @@ class _WarehouseDispatchScreenState extends ConsumerState<WarehouseDispatchScree
       try {
         final user = ref.read(currentUserProvider);
         final dispatchRecord = WarehouseDispatchRecord(
-          id: DateTime.now().millisecondsSinceEpoch.toString(),
+          id: UuidUtils.generate(),
           dispatchNumber: _dispatchNumberController.text.trim(),
           date: _dispatchDate,
           destinationStore: _destinationStoreController.text.trim(),
@@ -165,7 +218,7 @@ class _WarehouseDispatchScreenState extends ConsumerState<WarehouseDispatchScree
         await ref.read(warehouseDispatchProvider.notifier).confirmDispatch(dispatchRecord);
 
         // Refresh products list so stock numbers update instantly in UI
-        await ref.read(productProvider.notifier).loadProducts(silent: true);
+        await ref.read(productsFutureProvider.notifier).loadProducts();
 
         if (mounted) {
           ScaffoldMessenger.of(context).showSnackBar(
@@ -200,10 +253,36 @@ class _WarehouseDispatchScreenState extends ConsumerState<WarehouseDispatchScree
     final theme = Theme.of(context);
     final isDark = theme.brightness == Brightness.dark;
 
-    final products = ref.watch(productProvider).value ?? [];
-    final batches = ref.watch(warehouseBatchProvider).value ?? [];
+    final List<Product> products = ref.watch(productsFutureProvider).value ?? <Product>[];
+    final List<WarehouseBatch> batches = ref.watch(warehouseBatchProvider).value ?? <WarehouseBatch>[];
+    final List<Branch> branches = ref.watch(branchesProvider).value ?? <Branch>[];
 
-    final lowStoreStockProducts = products.where((p) => p.needsDispatch).toList();
+    final storeOptions = <String>[];
+    if (branches.isNotEmpty) {
+      for (final b in branches) {
+        final label = b.location.isNotEmpty ? '${b.name} (${b.location})' : b.name;
+        if (!storeOptions.contains(label)) {
+          storeOptions.add(label);
+        }
+      }
+    } else {
+      final user = ref.watch(currentUserProvider);
+      final defaultStore = user?.branchCode ?? 'Main Store';
+      if (!storeOptions.contains(defaultStore)) {
+        storeOptions.add(defaultStore);
+      }
+    }
+
+    if (_destinationStoreController.text.isNotEmpty && !storeOptions.contains(_destinationStoreController.text)) {
+      storeOptions.add(_destinationStoreController.text);
+    }
+    if (_destinationStoreController.text.isEmpty || !storeOptions.contains(_destinationStoreController.text)) {
+      if (storeOptions.isNotEmpty) {
+        _destinationStoreController.text = storeOptions.first;
+      }
+    }
+
+    final lowStoreStockProducts = products.where((Product p) => p.needsDispatch).toList();
 
     return SingleChildScrollView(
       padding: const EdgeInsets.all(AppSpacing.l),
@@ -247,41 +326,103 @@ class _WarehouseDispatchScreenState extends ConsumerState<WarehouseDispatchScree
               Container(
                 padding: const EdgeInsets.all(AppSpacing.m),
                 decoration: BoxDecoration(
-                  color: isDark ? const Color(0xFF2A1C08) : Colors.amber.shade50,
+                  color: isDark ? const Color(0xFF2A1C08) : Colors.amber.shade50.withValues(alpha: 0.8),
                   borderRadius: BorderRadius.circular(AppRadius.m),
-                  border: Border.all(color: Colors.amber.shade600),
+                  border: Border.all(color: isDark ? Colors.amber.shade700 : Colors.amber.shade500, width: 1.2),
                 ),
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     Row(
                       children: [
-                        const Icon(Icons.warning_amber_rounded, color: Colors.amber, size: 22),
+                        Container(
+                          padding: const EdgeInsets.all(6),
+                          decoration: BoxDecoration(
+                            color: Colors.amber.withValues(alpha: 0.2),
+                            shape: BoxShape.circle,
+                          ),
+                          child: const Icon(Icons.warning_amber_rounded, color: Colors.amber, size: 20),
+                        ),
                         const SizedBox(width: 8),
-                        Text(
-                          'Store Replenishment Needed (${lowStoreStockProducts.length} Products Low in Shop)',
-                          style: TextStyle(
-                            fontWeight: FontWeight.bold,
-                            fontSize: 14,
-                            color: isDark ? Colors.amber.shade200 : Colors.amber.shade900,
+                        Expanded(
+                          child: Text(
+                            'Store Replenishment Needed (${lowStoreStockProducts.length} ${lowStoreStockProducts.length == 1 ? "Product" : "Products"} Low in Shop)',
+                            style: TextStyle(
+                              fontWeight: FontWeight.bold,
+                              fontSize: 14,
+                              color: isDark ? Colors.amber.shade200 : Colors.amber.shade900,
+                            ),
+                            maxLines: 2,
+                            overflow: TextOverflow.ellipsis,
                           ),
                         ),
                       ],
                     ),
-                    const SizedBox(height: 8),
-                    const Text('Click any low-stock product below to pre-select it for dispatch:', style: TextStyle(fontSize: 11, color: Colors.grey)),
-                    const SizedBox(height: 8),
-                    Wrap(
-                      spacing: 8,
-                      runSpacing: 8,
-                      children: lowStoreStockProducts.map((p) {
-                        return ActionChip(
-                          avatar: const Icon(Icons.add_rounded, size: 14),
-                          label: Text('${p.name} (Shop: ${p.stockQuantity.toInt()} Pcs / WHS: ${p.warehouseQuantity.toInt()} Pcs)', style: const TextStyle(fontSize: 11)),
-                          backgroundColor: Colors.amber.shade100,
-                          onPressed: () => _onProductSelected(p, batches),
-                        );
-                      }).toList(),
+                    const SizedBox(height: 6),
+                    Row(
+                      children: [
+                        Expanded(
+                          child: Text(
+                            'Tap any product below to pre-select it for dispatch:',
+                            style: TextStyle(fontSize: 11, color: isDark ? Colors.grey.shade300 : Colors.grey.shade700),
+                          ),
+                        ),
+                        if (lowStoreStockProducts.length > 1) ...[
+                          const SizedBox(width: 4),
+                          Text(
+                            'Swipe →',
+                            style: TextStyle(fontSize: 10, fontWeight: FontWeight.bold, color: Colors.amber.shade800),
+                          ),
+                        ],
+                      ],
+                    ),
+                    const SizedBox(height: 10),
+                    SingleChildScrollView(
+                      scrollDirection: Axis.horizontal,
+                      physics: const BouncingScrollPhysics(),
+                      child: Row(
+                        children: lowStoreStockProducts.map((p) {
+                          return Padding(
+                            padding: const EdgeInsets.only(right: 8.0),
+                            child: ActionChip(
+                              avatar: const Icon(Icons.add_rounded, size: 16, color: Colors.amber),
+                              label: Row(
+                                mainAxisSize: MainAxisSize.min,
+                                children: [
+                                  Text(
+                                    p.name,
+                                    style: TextStyle(
+                                      fontSize: 12,
+                                      fontWeight: FontWeight.bold,
+                                      color: isDark ? Colors.amber.shade100 : Colors.black87,
+                                    ),
+                                  ),
+                                  const SizedBox(width: 6),
+                                  Container(
+                                    padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                                    decoration: BoxDecoration(
+                                      color: isDark ? Colors.amber.shade900.withValues(alpha: 0.5) : Colors.amber.shade200.withValues(alpha: 0.8),
+                                      borderRadius: BorderRadius.circular(10),
+                                    ),
+                                    child: Text(
+                                      'Shop: ${p.posStockDisplay} • WHS: ${p.stockControlWarehouseDisplay}',
+                                      style: TextStyle(
+                                        fontSize: 10,
+                                        fontWeight: FontWeight.bold,
+                                        color: isDark ? Colors.amber.shade100 : Colors.amber.shade900,
+                                      ),
+                                    ),
+                                  ),
+                                ],
+                              ),
+                              backgroundColor: isDark ? const Color(0xFF382A10) : Colors.amber.shade100.withValues(alpha: 0.9),
+                              side: BorderSide(color: isDark ? Colors.amber.shade700 : Colors.amber.shade400, width: 1),
+                              elevation: 0,
+                              onPressed: () => _onProductSelected(p, batches),
+                            ),
+                          );
+                        }).toList(),
+                      ),
                     ),
                   ],
                 ),
@@ -317,14 +458,37 @@ class _WarehouseDispatchScreenState extends ConsumerState<WarehouseDispatchScree
                       ),
                       const SizedBox(width: AppSpacing.m),
                       Expanded(
-                        child: TextFormField(
-                          controller: _destinationStoreController,
+                        child: DropdownButtonFormField<String>(
+                          initialValue: storeOptions.contains(_destinationStoreController.text)
+                              ? _destinationStoreController.text
+                              : storeOptions.first,
+                          isExpanded: true,
                           decoration: const InputDecoration(
                             labelText: 'Destination Store',
                             prefixIcon: Icon(Icons.storefront_rounded),
                             border: OutlineInputBorder(),
                           ),
-                          validator: (v) => (v == null || v.trim().isEmpty) ? 'Enter destination store' : null,
+                          items: storeOptions.map((store) {
+                            final branch = branches.where((b) => b.name == store).firstOrNull;
+                            final displayLabel = (branch != null && branch.location.isNotEmpty)
+                                ? '${branch.name} (${branch.location})'
+                                : store;
+                            return DropdownMenuItem<String>(
+                              value: store,
+                              child: Text(
+                                displayLabel,
+                                overflow: TextOverflow.ellipsis,
+                              ),
+                            );
+                          }).toList(),
+                          onChanged: (val) {
+                            if (val != null) {
+                              setState(() {
+                                _destinationStoreController.text = val;
+                              });
+                            }
+                          },
+                          validator: (v) => (v == null || v.trim().isEmpty) ? 'Select destination store' : null,
                         ),
                       ),
                     ],
@@ -385,21 +549,102 @@ class _WarehouseDispatchScreenState extends ConsumerState<WarehouseDispatchScree
                 children: [
                   const Text('2. Select Product & Pick Quantity', style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
                   const SizedBox(height: AppSpacing.m),
-                  DropdownButtonFormField<Product>(
-                    value: _selectedProduct,
-                    isExpanded: true,
-                    decoration: const InputDecoration(
-                      labelText: 'Select Product to Dispatch',
-                      prefixIcon: Icon(Icons.inventory_2_rounded),
-                      border: OutlineInputBorder(),
-                    ),
-                    items: products.map((p) {
-                      return DropdownMenuItem(
-                        value: p,
-                        child: Text('${p.name} [SKU: ${p.sku ?? p.id.substring(0, 8)}] (WHS: ${p.warehouseQuantity.toInt()} Pcs | Shop: ${p.stockQuantity.toInt()} Pcs)'),
+                  RawAutocomplete<Product>(
+                    displayStringForOption: (p) => '${p.name} (${p.category}) [WHS: ${p.stockControlWarehouseDisplay}]',
+                    optionsBuilder: (textEditingValue) {
+                      if (textEditingValue.text.isEmpty) {
+                        return products.take(15);
+                      }
+                      final query = textEditingValue.text.toLowerCase().trim();
+                      return products.where((p) =>
+                        p.name.toLowerCase().contains(query) ||
+                        p.category.toLowerCase().contains(query) ||
+                        (p.sku != null && p.sku!.toLowerCase().contains(query)) ||
+                        (p.brand != null && p.brand!.toLowerCase().contains(query))
                       );
-                    }).toList(),
-                    onChanged: (p) => _onProductSelected(p, batches),
+                    },
+                    onSelected: (p) => _onProductSelected(p, batches),
+                    fieldViewBuilder: (context, controller, focusNode, onFieldSubmitted) {
+                      return TextFormField(
+                        controller: controller,
+                        focusNode: focusNode,
+                        onFieldSubmitted: (v) {
+                          final query = v.trim().toLowerCase();
+                          if (query.isNotEmpty) {
+                            final matched = products.where((p) => !p.isDeleted).where((p) {
+                              final skuMatch = p.sku != null && p.sku!.toLowerCase() == query;
+                              final idMatch = p.id.toLowerCase() == query;
+                              final nameMatch = p.name.toLowerCase() == query;
+                              return skuMatch || idMatch || nameMatch;
+                            }).firstOrNull;
+
+                            if (matched != null) {
+                              controller.text = '${matched.name} (${matched.category}) [WHS: ${matched.stockControlWarehouseDisplay}]';
+                              _onProductSelected(matched, batches);
+                            } else {
+                              onFieldSubmitted();
+                            }
+                          }
+                        },
+                        decoration: InputDecoration(
+                          labelText: 'Search Product to Dispatch by Name, Category, or SKU',
+                          hintText: 'Scan barcode or type name e.g. Anua, CeraVe, Lotion...',
+                          prefixIcon: const Icon(Icons.qr_code_scanner),
+                          suffixIcon: Row(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              IconButton(
+                                icon: const Icon(Icons.camera_alt_outlined),
+                                tooltip: 'Scan Barcode with Camera',
+                                onPressed: () => _scanBarcodeToSelectProduct(context, controller, products, batches),
+                              ),
+                              if (controller.text.isNotEmpty)
+                                IconButton(
+                                  icon: const Icon(Icons.clear), 
+                                  onPressed: () {
+                                    controller.clear();
+                                    _onProductSelected(null, batches);
+                                  },
+                                ),
+                            ],
+                          ),
+                          border: const OutlineInputBorder(),
+                        ),
+                      );
+                    },
+                    optionsViewBuilder: (context, onSelected, options) {
+                      return Align(
+                        alignment: Alignment.topLeft,
+                        child: Material(
+                          elevation: 8,
+                          borderRadius: BorderRadius.circular(8),
+                          child: Container(
+                            constraints: const BoxConstraints(maxHeight: 280, maxWidth: 600),
+                            child: ListView.builder(
+                              shrinkWrap: true,
+                              itemCount: options.length,
+                              itemBuilder: (context, index) {
+                                final p = options.elementAt(index);
+                                return ListTile(
+                                  dense: true,
+                                  title: Text(p.name, style: const TextStyle(fontWeight: FontWeight.bold)),
+                                  subtitle: Text('${p.category} • WHS Stock: ${p.stockControlWarehouseDisplay} | Shop: ${p.posStockDisplay}'),
+                                  trailing: Icon(
+                                    p.needsDispatch ? Icons.warning_amber_rounded : Icons.inventory_2_outlined,
+                                    color: p.needsDispatch ? Colors.amber : Colors.blue,
+                                    size: 18,
+                                  ),
+                                  onTap: () {
+                                    onSelected(p);
+                                    _onProductSelected(p, batches);
+                                  },
+                                );
+                              },
+                            ),
+                          ),
+                        ),
+                      );
+                    },
                   ),
 
                   if (_selectedProduct != null) ...[
@@ -418,32 +663,88 @@ class _WarehouseDispatchScreenState extends ConsumerState<WarehouseDispatchScree
                             children: [
                               const Icon(Icons.info_outline_rounded, color: Colors.blue, size: 20),
                               const SizedBox(width: 8),
-                              Text('Stock Overview for ${_selectedProduct!.name}', style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 13)),
+                              Expanded(
+                                child: Text(
+                                  'Stock Overview for ${_selectedProduct!.name}',
+                                  style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 13),
+                                  overflow: TextOverflow.ellipsis,
+                                ),
+                              ),
                             ],
                           ),
                           const SizedBox(height: 8),
-                          Row(
-                            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                          Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
                             children: [
-                              Text('Available Warehouse Stock: ${_selectedProduct!.warehouseQuantity.toInt()} Pcs', style: TextStyle(fontWeight: FontWeight.bold, color: Colors.green.shade800)),
-                              Text('Current Store Stock: ${_selectedProduct!.stockQuantity.toInt()} Pcs', style: TextStyle(fontWeight: FontWeight.bold, color: Colors.purple.shade800)),
-                              Text('Min Threshold: ${_selectedProduct!.minStoreStock.toInt()} Pcs', style: const TextStyle(color: Colors.grey)),
+                              Text(
+                                'Available Warehouse Stock: ${_selectedProduct!.stockControlWarehouseDisplay}',
+                                style: TextStyle(fontWeight: FontWeight.bold, color: Colors.green.shade800, fontSize: 12),
+                              ),
+                              const SizedBox(height: 4),
+                              Text(
+                                'Branch POS Stock: ${_selectedProduct!.posStockDisplay}',
+                                style: TextStyle(fontWeight: FontWeight.bold, color: Colors.purple.shade800, fontSize: 12),
+                              ),
+                              const SizedBox(height: 4),
+                              Text(
+                                'Min POS Threshold: ${_selectedProduct!.minStoreStock.toInt()} Pcs',
+                                style: const TextStyle(color: Colors.grey, fontSize: 11),
+                              ),
                             ],
                           ),
 
-                          // FEFO Batch Suggestion
+                          // FEFO Intake Source Passport
                           if (_fefoSuggestedBatch != null) ...[
-                            const Divider(height: 16),
-                            Row(
-                              children: [
-                                const Icon(Icons.auto_awesome, color: Colors.orange, size: 18),
-                                const SizedBox(width: 6),
-                                Text(
-                                  'FEFO Suggested Batch: ${_fefoSuggestedBatch!.batchNumber} '
-                                  '(${_fefoSuggestedBatch!.expiryDate != null ? "Expires: ${DateFormat('yyyy-MM-dd').format(_fefoSuggestedBatch!.expiryDate!)}" : "No expiry date"})',
-                                  style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 12, color: Colors.orange),
-                                ),
-                              ],
+                            const Divider(height: 20),
+                            Container(
+                              padding: const EdgeInsets.all(10),
+                              decoration: BoxDecoration(
+                                color: isDark ? const Color(0xFF1E2638) : Colors.white,
+                                borderRadius: BorderRadius.circular(6),
+                                border: Border.all(color: Colors.blue.shade200),
+                              ),
+                              child: Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  Row(
+                                    children: [
+                                      const Icon(Icons.inventory_2_rounded, color: Colors.blue, size: 16),
+                                      const SizedBox(width: 6),
+                                      Text(
+                                        'Intake Source Batch: ${_fefoSuggestedBatch!.batchNumber}',
+                                        style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 12, color: Colors.blue),
+                                      ),
+                                      const Spacer(),
+                                      Container(
+                                        padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                                        decoration: BoxDecoration(
+                                          color: Colors.blue.shade700,
+                                          borderRadius: BorderRadius.circular(4),
+                                        ),
+                                        child: Text(
+                                          '${_fefoSuggestedBatch!.quantity.toInt()} Pcs in Batch',
+                                          style: const TextStyle(color: Colors.white, fontSize: 9, fontWeight: FontWeight.bold),
+                                        ),
+                                      ),
+                                    ],
+                                  ),
+                                  const SizedBox(height: 6),
+                                  Wrap(
+                                    spacing: 12,
+                                    runSpacing: 4,
+                                    children: [
+                                      _intakeDetailChip(Icons.business_rounded, 'Supplier', _fefoSuggestedBatch!.source?.name ?? 'Supplier Warehouse'),
+                                      _intakeDetailChip(Icons.calendar_today_rounded, 'Received Date', DateFormat('yyyy-MM-dd').format(_fefoSuggestedBatch!.createdAt)),
+                                      _intakeDetailChip(
+                                        Icons.event_outlined, 
+                                        'Expiry Date', 
+                                        _fefoSuggestedBatch!.expiryDate != null ? DateFormat('yyyy-MM-dd').format(_fefoSuggestedBatch!.expiryDate!) : 'No Expiry Set'
+                                      ),
+                                      _intakeDetailChip(Icons.place_outlined, 'Warehouse Location', _fefoSuggestedBatch!.shelfLocation ?? 'Section A'),
+                                    ],
+                                  ),
+                                ],
+                              ),
                             ),
                           ],
                         ],
@@ -452,32 +753,137 @@ class _WarehouseDispatchScreenState extends ConsumerState<WarehouseDispatchScree
                   ],
 
                   const SizedBox(height: AppSpacing.m),
-                  Row(
-                    children: [
-                      Expanded(
-                        child: TextFormField(
-                          controller: _qtyController,
-                          keyboardType: const TextInputType.numberWithOptions(decimal: true),
-                          inputFormatters: [FilteringTextInputFormatter.allow(RegExp(r'[0-9.]'))],
-                          decoration: const InputDecoration(
-                            labelText: 'Dispatch Quantity (Pcs)',
-                            prefixIcon: Icon(Icons.numbers_rounded),
-                            border: OutlineInputBorder(),
-                          ),
-                        ),
+                  LayoutBuilder(
+                    builder: (context, inputConstraints) {
+                      final isNarrow = inputConstraints.maxWidth < 600;
+                      return isNarrow
+                          ? Column(
+                              children: [
+                                Row(
+                                  children: [
+                                    Expanded(
+                                      child: TextFormField(
+                                        controller: _qtyController,
+                                        keyboardType: const TextInputType.numberWithOptions(decimal: true),
+                                        inputFormatters: [FilteringTextInputFormatter.allow(RegExp(r'[0-9.]'))],
+                                        decoration: InputDecoration(
+                                          labelText: _selectedUnit == 'Boxes' ? 'Dispatch Qty (Boxes)' : 'Dispatch Qty (Pcs)',
+                                          hintText: _selectedUnit == 'Boxes' ? 'e.g. 2' : 'e.g. 24',
+                                          prefixIcon: const Icon(Icons.inventory_2_outlined),
+                                          border: const OutlineInputBorder(),
+                                        ),
+                                      ),
+                                    ),
+                                    const SizedBox(width: AppSpacing.s),
+                                    Expanded(
+                                      child: DropdownButtonFormField<String>(
+                                        initialValue: _selectedUnit,
+                                        isExpanded: true,
+                                        decoration: const InputDecoration(
+                                          labelText: 'Unit',
+                                          prefixIcon: Icon(Icons.unarchive_rounded),
+                                          border: OutlineInputBorder(),
+                                        ),
+                                        items: const [
+                                          DropdownMenuItem(value: 'Pcs', child: Text('1. Pcs', overflow: TextOverflow.ellipsis)),
+                                          DropdownMenuItem(value: 'Packs', child: Text('2. Packs', overflow: TextOverflow.ellipsis)),
+                                          DropdownMenuItem(value: 'Boxes', child: Text('3. Boxes', overflow: TextOverflow.ellipsis)),
+                                        ],
+                                        onChanged: (u) {
+                                          if (u != null) {
+                                            setState(() => _selectedUnit = u);
+                                          }
+                                        },
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                                if (_selectedUnit == 'Boxes') ...[
+                                  const SizedBox(height: AppSpacing.s),
+                                  TextFormField(
+                                    controller: _pcsPerBoxController,
+                                    keyboardType: const TextInputType.numberWithOptions(decimal: true),
+                                    inputFormatters: [FilteringTextInputFormatter.allow(RegExp(r'[0-9.]'))],
+                                    decoration: const InputDecoration(
+                                      labelText: 'Pcs per Box',
+                                      prefixIcon: Icon(Icons.apps_rounded),
+                                      border: OutlineInputBorder(),
+                                    ),
+                                  ),
+                                ],
+                              ],
+                            )
+                          : Row(
+                              children: [
+                                Expanded(
+                                  flex: 2,
+                                  child: TextFormField(
+                                    controller: _qtyController,
+                                    keyboardType: const TextInputType.numberWithOptions(decimal: true),
+                                    inputFormatters: [FilteringTextInputFormatter.allow(RegExp(r'[0-9.]'))],
+                                    decoration: InputDecoration(
+                                      labelText: _selectedUnit == 'Boxes' ? 'Dispatch Quantity (Boxes)' : 'Dispatch Quantity (Pcs)',
+                                      hintText: _selectedUnit == 'Boxes' ? 'e.g. 2 Boxes' : 'e.g. 24 Pcs',
+                                      prefixIcon: const Icon(Icons.inventory_2_outlined),
+                                      border: const OutlineInputBorder(),
+                                    ),
+                                  ),
+                                ),
+                                const SizedBox(width: AppSpacing.m),
+                                Expanded(
+                                  flex: 2,
+                                  child: DropdownButtonFormField<String>(
+                                    initialValue: _selectedUnit,
+                                    isExpanded: true,
+                                    decoration: const InputDecoration(
+                                      labelText: 'Dispatch Unit',
+                                      prefixIcon: Icon(Icons.unarchive_rounded),
+                                      border: OutlineInputBorder(),
+                                    ),
+                                    items: const [
+                                      DropdownMenuItem(value: 'Pcs', child: Text('1. Pcs (Individual)')),
+                                      DropdownMenuItem(value: 'Packs', child: Text('2. Packs')),
+                                      DropdownMenuItem(value: 'Boxes', child: Text('3. Boxes (Default)')),
+                                    ],
+                                    onChanged: (u) {
+                                      if (u != null) {
+                                        setState(() => _selectedUnit = u);
+                                      }
+                                    },
+                                  ),
+                                ),
+                                if (_selectedUnit == 'Boxes') ...[
+                                  const SizedBox(width: AppSpacing.m),
+                                  Expanded(
+                                    flex: 1,
+                                    child: TextFormField(
+                                      controller: _pcsPerBoxController,
+                                      keyboardType: const TextInputType.numberWithOptions(decimal: true),
+                                      inputFormatters: [FilteringTextInputFormatter.allow(RegExp(r'[0-9.]'))],
+                                      decoration: const InputDecoration(
+                                        labelText: 'Pcs / Box',
+                                        border: OutlineInputBorder(),
+                                      ),
+                                    ),
+                                  ),
+                                ],
+                              ],
+                            );
+                    },
+                  ),
+                  const SizedBox(height: AppSpacing.m),
+                  SizedBox(
+                    width: double.infinity,
+                    height: 48,
+                    child: ElevatedButton.icon(
+                      onPressed: _addItemToDispatch,
+                      icon: const Icon(Icons.add_circle_outline),
+                      label: const Text('ADD TO DISPATCH LIST', style: TextStyle(fontWeight: FontWeight.bold)),
+                      style: ElevatedButton.styleFrom(
+                        backgroundColor: AppColors.accentGreen,
+                        foregroundColor: Colors.white,
                       ),
-                      const SizedBox(width: AppSpacing.m),
-                      ElevatedButton.icon(
-                        onPressed: _addItemToDispatch,
-                        icon: const Icon(Icons.add_circle_outline),
-                        label: const Text('ADD TO DISPATCH LIST', style: TextStyle(fontWeight: FontWeight.bold)),
-                        style: ElevatedButton.styleFrom(
-                          backgroundColor: AppColors.accentGreen,
-                          foregroundColor: Colors.white,
-                          padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 20),
-                        ),
-                      ),
-                    ],
+                    ),
                   ),
                 ],
               ),
@@ -496,15 +902,45 @@ class _WarehouseDispatchScreenState extends ConsumerState<WarehouseDispatchScree
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  Row(
-                    children: [
-                      const Text('3. Review Dispatch Items', style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
-                      const Spacer(),
-                      Chip(
-                        label: Text('${_dispatchItems.length} Products | Total: ${_dispatchItems.fold(0.0, (s, i) => s + i.quantityDispatched).toInt()} Pcs', style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 11)),
-                        backgroundColor: Colors.green.withValues(alpha: 0.1),
-                      ),
-                    ],
+                  LayoutBuilder(
+                    builder: (context, rowConstraints) {
+                      final isNarrow = rowConstraints.maxWidth < 460;
+                      final totalPcs = _dispatchItems.fold(0.0, (s, i) => s + i.quantityDispatched).toInt();
+
+                      final badge = Container(
+                        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+                        decoration: BoxDecoration(
+                          color: Colors.green.withValues(alpha: 0.1),
+                          borderRadius: BorderRadius.circular(12),
+                          border: Border.all(color: Colors.green.shade200),
+                        ),
+                        child: Text(
+                          '${_dispatchItems.length} Products • Total: $totalPcs Pcs',
+                          style: TextStyle(fontWeight: FontWeight.bold, fontSize: 11, color: Colors.green.shade900),
+                        ),
+                      );
+
+                      if (isNarrow) {
+                        return Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            const Text('3. Review Dispatch Items', style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
+                            const SizedBox(height: 6),
+                            badge,
+                          ],
+                        );
+                      }
+
+                      return Row(
+                        children: [
+                          const Expanded(
+                            child: Text('3. Review Dispatch Items', style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold), overflow: TextOverflow.ellipsis),
+                          ),
+                          const SizedBox(width: 8),
+                          badge,
+                        ],
+                      );
+                    },
                   ),
                   const SizedBox(height: AppSpacing.m),
                   if (_dispatchItems.isEmpty)
@@ -562,29 +998,40 @@ class _WarehouseDispatchScreenState extends ConsumerState<WarehouseDispatchScree
             const SizedBox(height: AppSpacing.xl),
 
             // Final Confirmation Button
-            SizedBox(
-              width: double.infinity,
-              height: 56,
-              child: ElevatedButton.icon(
-                onPressed: _isSubmitting ? null : _confirmDispatch,
-                icon: _isSubmitting 
-                    ? const SizedBox(width: 20, height: 20, child: CircularProgressIndicator(color: Colors.white, strokeWidth: 2))
-                    : const Icon(Icons.check_circle_rounded),
-                label: Text(
-                  _isSubmitting ? 'CONFIRMING DISPATCH...' : 'CONFIRM DISPATCH (DEDUCT WAREHOUSE & ADD TO STORE)',
-                  style: const TextStyle(fontWeight: FontWeight.w900, letterSpacing: 1.1, fontSize: 15),
-                ),
-                style: ElevatedButton.styleFrom(
-                  backgroundColor: AppColors.accentGreen,
-                  foregroundColor: Colors.white,
-                  elevation: 4,
-                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-                ),
+            ElevatedButton.icon(
+              onPressed: _isSubmitting ? null : _confirmDispatch,
+              icon: _isSubmitting 
+                  ? const SizedBox(width: 20, height: 20, child: CircularProgressIndicator(color: Colors.white, strokeWidth: 2))
+                  : const Icon(Icons.check_circle_rounded),
+              label: Text(
+                _isSubmitting ? 'CONFIRMING DISPATCH...' : 'CONFIRM DISPATCH (DEDUCT WAREHOUSE & ADD TO BRANCH POS)',
+                textAlign: TextAlign.center,
+                style: const TextStyle(fontWeight: FontWeight.w900, letterSpacing: 0.5, fontSize: 13),
+              ),
+              style: ElevatedButton.styleFrom(
+                backgroundColor: AppColors.accentGreen,
+                foregroundColor: Colors.white,
+                elevation: 4,
+                padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                minimumSize: const Size(double.infinity, 50),
               ),
             ),
           ],
         ),
       ),
+    );
+  }
+
+  Widget _intakeDetailChip(IconData icon, String label, String value) {
+    return Row(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        Icon(icon, size: 13, color: Colors.blue.shade700),
+        const SizedBox(width: 4),
+        Text('$label: ', style: const TextStyle(fontSize: 10, color: Colors.grey)),
+        Text(value, style: const TextStyle(fontSize: 10, fontWeight: FontWeight.bold)),
+      ],
     );
   }
 }

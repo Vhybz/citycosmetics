@@ -103,13 +103,8 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
         if (mounted) {
           switch (userAccount.activePrimaryRole) {
             case UserRole.admin:
-              Navigator.pushReplacementNamed(context, '/admin');
-              break;
             case UserRole.superAdmin:
-              Navigator.pushReplacementNamed(context, '/admin/super');
-              break;
-            case UserRole.butcher:
-              Navigator.pushReplacementNamed(context, '/butcher');
+              Navigator.pushReplacementNamed(context, '/admin');
               break;
             case UserRole.cashier:
               Navigator.pushReplacementNamed(context, '/cashier');

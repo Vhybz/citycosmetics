@@ -287,17 +287,31 @@ class _SignupScreenState extends ConsumerState<SignupScreen> {
                             DropdownButtonFormField<UserRole>(
                               initialValue: _selectedRole,
                               decoration: const InputDecoration(labelText: 'Applying For Role', prefixIcon: Icon(Icons.work_outline)),
-                              items: [UserRole.cashier, UserRole.butcher, UserRole.admin].map((r) => DropdownMenuItem(value: r, child: Text(r.name.toUpperCase()))).toList(),
+                              items: [UserRole.cashier, UserRole.admin, UserRole.superAdmin].map((r) {
+                                String label;
+                                switch (r) {
+                                  case UserRole.cashier:
+                                    label = 'CASHIER';
+                                    break;
+                                  case UserRole.admin:
+                                    label = 'ADMIN';
+                                    break;
+                                  case UserRole.superAdmin:
+                                    label = 'SUPER ADMIN';
+                                    break;
+                                }
+                                return DropdownMenuItem(value: r, child: Text(label));
+                              }).toList(),
                               onChanged: (v) {
                                 setState(() {
                                   _selectedRole = v!;
-                                  if (v != UserRole.admin) _isCreatingBranch = false;
+                                  if (v != UserRole.admin && v != UserRole.superAdmin) _isCreatingBranch = false;
                                 });
                               },
                             ),
                             const SizedBox(height: AppSpacing.m),
                             
-                            if (_selectedRole == UserRole.admin) ...[
+                            if (_selectedRole == UserRole.admin || _selectedRole == UserRole.superAdmin) ...[
                               CheckboxListTile(
                                 title: Text('Setup New Branch?', style: TextStyle(fontSize: 13, fontWeight: FontWeight.bold, color: theme.colorScheme.onSurface)),
                                 subtitle: Text(noBranchesExist ? 'Required: No branches found in system.' : 'Create a separate business unit', style: TextStyle(fontSize: 10, color: theme.colorScheme.onSurfaceVariant)),
@@ -331,7 +345,7 @@ class _SignupScreenState extends ConsumerState<SignupScreen> {
                               const SizedBox(height: AppSpacing.m),
                             ],
 
-                            if (_selectedRole == UserRole.admin && (_isCreatingBranch || noBranchesExist)) ...[
+                            if ((_selectedRole == UserRole.admin || _selectedRole == UserRole.superAdmin) && (_isCreatingBranch || noBranchesExist)) ...[
                               _buildTextField(context, _branchNameController, 'Shop/Branch Name', Icons.store_mall_directory_outlined),
                               const SizedBox(height: AppSpacing.m),
                               _buildTextField(context, _branchLocationController, 'Branch Location (City/Town)', Icons.location_on_outlined),
@@ -343,7 +357,7 @@ class _SignupScreenState extends ConsumerState<SignupScreen> {
                                 decoration: const InputDecoration(labelText: 'Select Working Branch', prefixIcon: Icon(Icons.map_outlined)),
                                 items: branches.map((b) => DropdownMenuItem(value: b.code, child: Text('${b.name} (${b.location})', style: const TextStyle(fontSize: 11), overflow: TextOverflow.ellipsis))).toList(),
                                 onChanged: (v) => setState(() => _selectedBranchCode = v),
-                                validator: (v) => v == null ? 'Please select a branch' : null,
+                                validator: (v) => v == null && _selectedRole != UserRole.superAdmin ? 'Please select a branch' : null,
                               ),
                               const SizedBox(height: AppSpacing.m),
                             ],
@@ -490,7 +504,7 @@ class _SignupScreenState extends ConsumerState<SignupScreen> {
         final existingProfiles = ref.read(userProvider);
         final existingProfile = existingProfiles.where((u) => u.email.toLowerCase() == email.toLowerCase()).firstOrNull;
 
-        if (_selectedRole == UserRole.admin && (_isCreatingBranch || noBranchesExist)) {
+        if ((_selectedRole == UserRole.admin || _selectedRole == UserRole.superAdmin) && (_isCreatingBranch || noBranchesExist)) {
           final String bName = _branchNameController.text.trim();
           final String location = _branchLocationController.text.trim();
           final String random = (100 + (DateTime.now().millisecond % 900)).toString();
@@ -511,7 +525,8 @@ class _SignupScreenState extends ConsumerState<SignupScreen> {
         
         if (authUser != null) {
           final adminExists = await userNotifier.checkIfAnyAdminExists();
-          final isFirstAdmin = !adminExists && _selectedRole == UserRole.admin;
+          final isSuperAdmin = _selectedRole == UserRole.superAdmin;
+          final isFirstAdmin = !adminExists && (_selectedRole == UserRole.admin || isSuperAdmin);
           
           debugPrint('Signup Trace: AdminExists=$adminExists, SelectedRole=$_selectedRole, IsFirstAdmin=$isFirstAdmin');
           
@@ -525,10 +540,11 @@ class _SignupScreenState extends ConsumerState<SignupScreen> {
             dob: _selectedDob,
             role: existingProfile?.role ?? _selectedRole,
             branchCode: existingProfile?.branchCode ?? branchCode,
-            status: existingProfile != null ? AccountStatus.approved : (isFirstAdmin ? AccountStatus.approved : AccountStatus.pending),
-            enabledPermissions: existingProfile?.enabledPermissions ?? (isFirstAdmin 
+            status: existingProfile != null ? AccountStatus.approved : ((isFirstAdmin || isSuperAdmin) ? AccountStatus.approved : AccountStatus.pending),
+            enabledPermissions: existingProfile?.enabledPermissions ?? ((isFirstAdmin || isSuperAdmin)
               ? {
                   '/admin',
+                  '/admin/super',
                   '/admin/sales', 
                   '/admin/expenses', 
                   '/admin/customers', 
@@ -538,7 +554,6 @@ class _SignupScreenState extends ConsumerState<SignupScreen> {
                   '/admin/staff',
                   '/admin/salaries',
                   '/cashier', 
-                  '/butcher', 
                   '/settings'
                 } 
               : {'/settings'}),
@@ -546,23 +561,25 @@ class _SignupScreenState extends ConsumerState<SignupScreen> {
 
           try {
             await userNotifier.addAccount(newUser);
-            if (_selectedRole == UserRole.admin && (_isCreatingBranch || noBranchesExist)) {
+            if ((_selectedRole == UserRole.admin || _selectedRole == UserRole.superAdmin) && (_isCreatingBranch || noBranchesExist)) {
               if (branchCode != null) {
                 await ref.read(branchesProvider.notifier).setBranchAdmin(branchCode, newUser.id);
               }
             }
             
-            // SMS Notifications (Best effort)
+            // SMS Notifications: Sent to both the newly registered user AND the admin(s)
             try {
+              final isAutoApproved = isFirstAdmin || isSuperAdmin || existingProfile != null;
+
               if (existingProfile != null) {
                 await SmsService.sendStaffOnboardingSms(newUser);
               } else {
-                await SmsService.sendSignupConfirmationSms(newUser, isFirstAdmin);
+                await SmsService.sendSignupConfirmationSms(newUser, isAutoApproved);
               }
-              if (!isFirstAdmin && existingProfile == null) {
-                final allUsers = ref.read(userProvider);
-                await SmsService.sendApprovalRequestSms(newUser, allUsers);
-              }
+
+              // Always notify Admin(s) and System Admin about every new signup
+              final allUsers = ref.read(userProvider);
+              await SmsService.sendApprovalRequestSms(newUser, allUsers);
             } catch (smsErr) {
               debugPrint('Signup SMS Error: $smsErr');
             }

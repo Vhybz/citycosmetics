@@ -10,27 +10,17 @@ import '../../widgets/role_pop_scope.dart';
 import '../../services/birthday_service.dart';
 import '../../widgets/passcode_guard.dart';
 import 'warehouse_dashboard.dart';
-import 'shipment_intake_screen.dart';
-import 'warehouse_processing_screen.dart';
-import 'stock_dispatch_screen.dart';
-import 'warehouse_inventory_screen.dart';
-import 'requisition_orders_screen.dart';
-import 'damage_management_screen.dart';
-import 'warehouse_reports_screen.dart';
-import 'bulk_breakdown_screen.dart';
+import 'warehouse_intake_screen.dart';
+import 'warehouse_goods_screen.dart';
+import 'warehouse_dispatch_screen.dart';
 import '../profile_screen.dart';
 
 enum WarehouseScreen {
   dashboard,
-  shipmentIntake,
-  warehouseProcessing,
-  stockDispatch,
-  inventory,
-  orders,
-  damageManagement,
-  reports,
+  intake,
+  goods,
+  dispatch,
   profile,
-  bulkBreakdown,
 }
 
 final warehouseNavProvider = StateNotifierProvider<WarehouseNavNotifier, WarehouseScreen>((ref) {
@@ -101,46 +91,46 @@ class WarehouseShell extends ConsumerWidget {
 
   String _getScreenTitle(WarehouseScreen screen) {
     switch (screen) {
-      case WarehouseScreen.dashboard: return 'Central Warehouse Dashboard';
-      case WarehouseScreen.shipmentIntake: return 'Procurement & Shipment Intake';
-      case WarehouseScreen.warehouseProcessing: return 'Stock Unboxing & Barcode Tagging';
-      case WarehouseScreen.stockDispatch: return 'Stock Dispatch to Shop';
-      case WarehouseScreen.inventory: return 'Warehouse Inventory';
-      case WarehouseScreen.orders: return 'Shop Requisition Requests';
-      case WarehouseScreen.damageManagement: return 'Damaged & Expired Stock';
-      case WarehouseScreen.reports: return 'Supply Chain Reports';
+      case WarehouseScreen.dashboard: return 'Warehouse Operations Dashboard';
+      case WarehouseScreen.intake: return 'Goods Intake Workflow';
+      case WarehouseScreen.goods: return 'Warehouse Goods & Inventory';
+      case WarehouseScreen.dispatch: return 'Store Replenishment Dispatch';
       case WarehouseScreen.profile: return 'Personal Profile';
-      case WarehouseScreen.bulkBreakdown: return 'Bulk Package Unboxing';
     }
   }
 
   Widget _buildSidebar(WidgetRef ref, WarehouseScreen current, UserAccount user, BuildContext context) {
     const currentRoute = '/warehouse';
+    final baseMenuItems = ref.watch(menuItemsProvider);
+    const secInventory = 'Inventory & Supply Chain';
+    final warehouseSubItems = [
+      SidebarItem(icon: Icons.dashboard_rounded, label: 'Warehouse Dashboard', route: 'warehouse:dashboard', category: secInventory),
+      SidebarItem(icon: Icons.move_to_inbox_rounded, label: 'Goods Intake', route: 'warehouse:intake', category: secInventory),
+      SidebarItem(icon: Icons.inventory_2_rounded, label: 'Warehouse Goods', route: 'warehouse:goods', category: secInventory),
+      SidebarItem(icon: Icons.local_shipping_rounded, label: 'Store Dispatch', route: 'warehouse:dispatch', category: secInventory),
+    ];
+
     final menuItems = [
-      SidebarItem(icon: Icons.dashboard_rounded, label: 'Dashboard', route: 'warehouse:dashboard'),
-      SidebarItem(icon: Icons.move_to_inbox_rounded, label: 'Shipment Intake', route: 'warehouse:shipmentIntake'),
-      SidebarItem(icon: Icons.inventory_2_rounded, label: 'Stock Processing', route: 'warehouse:warehouseProcessing'),
-      SidebarItem(icon: Icons.unarchive_rounded, label: 'Bulk Unboxing', route: 'warehouse:bulkBreakdown'),
-      SidebarItem(icon: Icons.local_shipping_rounded, label: 'Stock Dispatch', route: 'warehouse:stockDispatch'),
-      SidebarItem(icon: Icons.warehouse_rounded, label: 'Warehouse Stock', route: 'warehouse:inventory'),
-      SidebarItem(icon: Icons.shopping_bag_rounded, label: 'Shop Requests', route: 'warehouse:orders'),
-      SidebarItem(icon: Icons.report_problem_rounded, label: 'Damaged Stock', route: 'warehouse:damageManagement'),
-      SidebarItem(icon: Icons.assessment_rounded, label: 'Reports', route: 'warehouse:reports'),
+      ...warehouseSubItems,
+      ...baseMenuItems.where((item) => item.route != '/warehouse'),
     ];
 
     return AppSidebar(
       userId: user.id,
       userName: user.name,
-      userRole: 'WAREHOUSE MANAGER',
+      userRole: user.activePrimaryRole.name.toUpperCase(),
       currentRoute: 'warehouse:${current.name}',
       items: menuItems,
       onTap: (route) {
         if (route.startsWith('warehouse:')) {
           final screenStr = route.split(':')[1];
-          final screen = WarehouseScreen.values.byName(screenStr);
+          final screen = WarehouseScreen.values.firstWhere(
+            (e) => e.name == screenStr,
+            orElse: () => WarehouseScreen.dashboard,
+          );
           ref.read(warehouseNavProvider.notifier).setScreen(screen);
         } else {
-          MenuService.navigate(context, route, currentRoute);
+          MenuService.navigate(context, ref, route, currentRoute);
         }
       },
     );
@@ -149,15 +139,10 @@ class WarehouseShell extends ConsumerWidget {
   Widget _buildContent(WarehouseScreen screen) {
     switch (screen) {
       case WarehouseScreen.dashboard: return const WarehouseDashboard();
-      case WarehouseScreen.shipmentIntake: return const ShipmentIntakeScreen();
-      case WarehouseScreen.warehouseProcessing: return const WarehouseProcessingScreen();
-      case WarehouseScreen.stockDispatch: return const StockDispatchScreen();
-      case WarehouseScreen.inventory: return const WarehouseInventoryScreen();
-      case WarehouseScreen.orders: return const RequisitionOrdersScreen();
-      case WarehouseScreen.damageManagement: return const DamageManagementScreen();
-      case WarehouseScreen.reports: return const WarehouseReportsScreen();
+      case WarehouseScreen.intake: return const WarehouseIntakeScreen();
+      case WarehouseScreen.goods: return const WarehouseGoodsScreen();
+      case WarehouseScreen.dispatch: return const WarehouseDispatchScreen();
       case WarehouseScreen.profile: return const ProfileView();
-      case WarehouseScreen.bulkBreakdown: return const BulkBreakdownScreen();
     }
   }
 }

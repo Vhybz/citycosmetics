@@ -85,7 +85,7 @@ class _TaxComplianceScreenState extends ConsumerState<TaxComplianceScreen> {
           userRole: user.activePrimaryRole.name.toUpperCase(),
           currentRoute: currentRoute,
           items: menuItems,
-          onTap: (route) => MenuService.navigate(context, route, currentRoute),
+          onTap: (route) => MenuService.navigate(context, ref, route, currentRoute),
         ),
       ),
       body: Row(
@@ -97,7 +97,7 @@ class _TaxComplianceScreenState extends ConsumerState<TaxComplianceScreen> {
               userRole: user.activePrimaryRole.name.toUpperCase(),
               currentRoute: currentRoute,
               items: menuItems,
-              onTap: (route) => MenuService.navigate(context, route, currentRoute),
+              onTap: (route) => MenuService.navigate(context, ref, route, currentRoute),
             ),
           Expanded(
             child: SafeArea(

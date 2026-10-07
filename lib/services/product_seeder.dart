@@ -1,6 +1,8 @@
 import '../core/uuid_utils.dart';
+import '../core/supabase_config.dart';
 import '../models/product.dart';
 import 'product_service.dart';
+import 'supabase_product_service.dart';
 import 'user_provider.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
@@ -8,11 +10,32 @@ class ProductSeeder {
   final Ref ref;
   ProductSeeder(this.ref);
 
-  Future<void> seedProducts() async {
+  /// Resets all product stock quantities (Store & Warehouse) to 0.0 Pcs
+  Future<void> resetAllStockToZero() async {
+    final user = ref.read(currentUserProvider);
+    if (user == null || user.branchCode == null) return;
+
+    await SupabaseConfig.client
+        .from('products')
+        .update({
+          'stock_quantity': 0.0,
+          'warehouse_quantity': 0.0,
+          'daily_stock_added': 0.0,
+        })
+        .eq('branch_code', user.branchCode!);
+
+    ref.invalidate(productsFutureProvider);
+  }
+
+  Future<void> seedProducts({bool resetExistingToZero = false}) async {
     final user = ref.read(currentUserProvider);
     if (user == null || user.branchCode == null) return;
 
     final service = ref.read(productServiceProvider);
+
+    if (resetExistingToZero) {
+      await resetAllStockToZero();
+    }
     
     final List<Map<String, List<String>>> data = [
       {
@@ -182,7 +205,8 @@ class ProductSeeder {
           costPrice: 0.0,
           imageUrl: '', 
           category: category,
-          stockQuantity: 50.0, // Default seed quantity
+          stockQuantity: 0.0, // Default store stock quantity set to 0.0
+          warehouseQuantity: 0.0, // Default warehouse stock quantity set to 0.0
           unit: 'pcs',
         );
         

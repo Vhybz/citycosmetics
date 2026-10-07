@@ -39,7 +39,7 @@ class ProfileScreen extends ConsumerWidget {
             userRole: user.activePrimaryRole.name.toUpperCase(),
             currentRoute: currentRoute,
             items: menuItems,
-            onTap: (route) => MenuService.navigate(context, route, currentRoute),
+            onTap: (route) => MenuService.navigate(context, ref, route, currentRoute),
           ),
         ),
         body: Row(
@@ -51,7 +51,7 @@ class ProfileScreen extends ConsumerWidget {
                 userRole: user.activePrimaryRole.name.toUpperCase(),
                 currentRoute: currentRoute,
                 items: menuItems,
-                onTap: (route) => MenuService.navigate(context, route, currentRoute),
+                onTap: (route) => MenuService.navigate(context, ref, route, currentRoute),
               ),
             const Expanded(
               child: ProfileView(),
@@ -268,43 +268,67 @@ class _ProfileViewState extends ConsumerState<ProfileView> {
               ),
               child: Column(
                 children: [
-                  SwitchListTile(
-                    secondary: Container(
-                      padding: const EdgeInsets.all(8),
-                      decoration: BoxDecoration(
-                        color: theme.colorScheme.primary.withValues(alpha: 0.1),
-                        shape: BoxShape.circle,
-                      ),
-                      child: Icon(Icons.pin_rounded, color: theme.colorScheme.primary, size: 20),
+                  Padding(
+                    padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+                    child: Row(
+                      children: [
+                        Container(
+                          padding: const EdgeInsets.all(8),
+                          decoration: BoxDecoration(
+                            color: theme.colorScheme.primary.withValues(alpha: 0.1),
+                            shape: BoxShape.circle,
+                          ),
+                          child: Icon(Icons.pin_rounded, color: theme.colorScheme.primary, size: 20),
+                        ),
+                        const SizedBox(width: 12),
+                        Expanded(
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              const Text(
+                                'Use 4-Digit Security PIN',
+                                style: TextStyle(fontWeight: FontWeight.bold, fontSize: 14),
+                                maxLines: 1,
+                                overflow: TextOverflow.ellipsis,
+                              ),
+                              const SizedBox(height: 2),
+                              Text(
+                                user.isPasscodeEnabled
+                                    ? 'PIN protection active • Screen lock and fast handover enabled'
+                                    : 'PIN protection disabled',
+                                style: TextStyle(fontSize: 11, color: theme.colorScheme.onSurfaceVariant),
+                                maxLines: 2,
+                                overflow: TextOverflow.ellipsis,
+                              ),
+                            ],
+                          ),
+                        ),
+                        const SizedBox(width: 8),
+                        Switch(
+                          value: user.isPasscodeEnabled,
+                          activeThumbColor: theme.colorScheme.primary,
+                          onChanged: (bool enabled) async {
+                            if (enabled) {
+                              if (user.passcode == null || user.passcode!.isEmpty) {
+                                _showPinSetupDialog(user);
+                              } else {
+                                await ref.read(userProvider.notifier).setPasscodeEnabled(user.id, true);
+                                if (!mounted) return;
+                                ScaffoldMessenger.of(context).showSnackBar(
+                                  const SnackBar(content: Text('4-Digit Security PIN enabled.'), backgroundColor: Colors.green),
+                                );
+                              }
+                            } else {
+                              await ref.read(userProvider.notifier).setPasscodeEnabled(user.id, false);
+                              if (!mounted) return;
+                              ScaffoldMessenger.of(context).showSnackBar(
+                                const SnackBar(content: Text('4-Digit Security PIN disabled.'), backgroundColor: Colors.orange),
+                              );
+                            }
+                          },
+                        ),
+                      ],
                     ),
-                    title: const Text('Use 4-Digit Security PIN', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 14)),
-                    subtitle: Text(
-                      user.isPasscodeEnabled
-                          ? 'PIN protection active • Screen lock and fast handover enabled'
-                          : 'PIN protection disabled',
-                      style: const TextStyle(fontSize: 11),
-                    ),
-                    value: user.isPasscodeEnabled,
-                    activeThumbColor: theme.colorScheme.primary,
-                    onChanged: (bool enabled) async {
-                      if (enabled) {
-                        if (user.passcode == null || user.passcode!.isEmpty) {
-                          _showPinSetupDialog(user);
-                        } else {
-                          await ref.read(userProvider.notifier).setPasscodeEnabled(user.id, true);
-                          if (!mounted) return;
-                          ScaffoldMessenger.of(context).showSnackBar(
-                            const SnackBar(content: Text('4-Digit Security PIN enabled.'), backgroundColor: Colors.green),
-                          );
-                        }
-                      } else {
-                        await ref.read(userProvider.notifier).setPasscodeEnabled(user.id, false);
-                        if (!mounted) return;
-                        ScaffoldMessenger.of(context).showSnackBar(
-                          const SnackBar(content: Text('4-Digit Security PIN disabled.'), backgroundColor: Colors.orange),
-                        );
-                      }
-                    },
                   ),
                   if (user.isPasscodeEnabled) ...[
                     const Divider(height: 1),
@@ -402,6 +426,16 @@ class _ProfileViewState extends ConsumerState<ProfileView> {
                   side: const BorderSide(color: Colors.red),
                   shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
                 ),
+              ),
+            ),
+            const SizedBox(height: 12),
+            SizedBox(
+              width: double.infinity,
+              height: 44,
+              child: TextButton.icon(
+                onPressed: () => _showDeleteAccountDialog(user),
+                icon: const Icon(Icons.delete_forever_rounded, color: Colors.red, size: 20),
+                label: const Text('Delete Account Permanently', style: TextStyle(color: Colors.red, fontWeight: FontWeight.bold, fontSize: 13)),
               ),
             ),
           ] else ...[
@@ -697,6 +731,134 @@ class _ProfileViewState extends ConsumerState<ProfileView> {
                 foregroundColor: Colors.white,
               ),
               child: Text(isSaving ? 'SAVING...' : 'SAVE PIN'),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  void _showDeleteAccountDialog(UserAccount user) {
+    final confirmController = TextEditingController();
+    bool isDeleting = false;
+    String? errorMessage;
+
+    showDialog(
+      context: context,
+      barrierDismissible: false,
+      builder: (context) => StatefulBuilder(
+        builder: (context, setDialogState) => AlertDialog(
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(AppRadius.l)),
+          title: const Row(
+            children: [
+              Icon(Icons.warning_amber_rounded, color: Colors.red, size: 28),
+              SizedBox(width: 10),
+              Text('Delete Account?', style: TextStyle(fontWeight: FontWeight.bold, color: Colors.red, fontSize: 18)),
+            ],
+          ),
+          content: SingleChildScrollView(
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  'Are you sure you want to delete account "${user.name}" (${user.email})?',
+                  style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 14),
+                ),
+                const SizedBox(height: 10),
+                const Text(
+                  'Your account access will be revoked and you will be signed out immediately. Your historical sales, attendance, and audit records will remain safely preserved in the database.',
+                  style: TextStyle(fontSize: 12, color: Colors.grey),
+                ),
+                const SizedBox(height: 16),
+                Container(
+                  padding: const EdgeInsets.all(12),
+                  decoration: BoxDecoration(
+                    color: Colors.red.shade50,
+                    borderRadius: BorderRadius.circular(AppRadius.m),
+                    border: Border.all(color: Colors.red.shade200),
+                  ),
+                  child: const Row(
+                    children: [
+                      Icon(Icons.info_outline, color: Colors.red, size: 20),
+                      SizedBox(width: 8),
+                      Expanded(
+                        child: Text(
+                          'Type DELETE below to confirm account removal.',
+                          style: TextStyle(fontSize: 12, color: Colors.red, fontWeight: FontWeight.bold),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+                const SizedBox(height: 14),
+                TextField(
+                  controller: confirmController,
+                  autofocus: true,
+                  decoration: const InputDecoration(
+                    labelText: 'Type DELETE to confirm',
+                    border: OutlineInputBorder(),
+                    hintText: 'DELETE',
+                  ),
+                  onChanged: (_) => setDialogState(() {}),
+                ),
+                if (errorMessage != null) ...[
+                  const SizedBox(height: 10),
+                  Text(errorMessage!, style: const TextStyle(color: Colors.red, fontSize: 12)),
+                ],
+              ],
+            ),
+          ),
+          actions: [
+            TextButton(
+              onPressed: isDeleting ? null : () => Navigator.pop(context),
+              child: const Text('CANCEL'),
+            ),
+            ElevatedButton.icon(
+              onPressed: (confirmController.text.trim() != 'DELETE' || isDeleting)
+                  ? null
+                  : () async {
+                      setDialogState(() {
+                        isDeleting = true;
+                        errorMessage = null;
+                      });
+
+                      try {
+                        final navigator = Navigator.of(context, rootNavigator: true);
+                        final messenger = ScaffoldMessenger.of(context);
+
+                        // 1. Delete user from system/database
+                        await ref.read(userProvider.notifier).deleteUser(user.id);
+
+                        // 2. Perform global sign out
+                        await GlobalLogout.perform(ref);
+
+                        if (context.mounted) {
+                          navigator.pop(); // Close dialog
+                          Navigator.of(context).pushNamedAndRemoveUntil('/login', (route) => false);
+                          messenger.showSnackBar(
+                            const SnackBar(
+                              content: Text('Account permanently deleted.'),
+                              backgroundColor: Colors.red,
+                              duration: Duration(seconds: 4),
+                            ),
+                          );
+                        }
+                      } catch (e) {
+                        setDialogState(() {
+                          isDeleting = false;
+                          errorMessage = 'Failed to delete account: $e';
+                        });
+                      }
+                    },
+              icon: isDeleting
+                  ? const SizedBox(width: 16, height: 16, child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white))
+                  : const Icon(Icons.delete_forever_rounded, size: 18),
+              label: Text(isDeleting ? 'DELETING...' : 'DELETE MY ACCOUNT NOW'),
+              style: ElevatedButton.styleFrom(
+                backgroundColor: Colors.red,
+                foregroundColor: Colors.white,
+              ),
             ),
           ],
         ),

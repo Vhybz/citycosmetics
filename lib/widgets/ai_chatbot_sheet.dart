@@ -191,7 +191,7 @@ class _AiChatbotSheetState extends ConsumerState<AiChatbotSheet> {
           // Input
           Container(
             padding: EdgeInsets.only(
-              bottom: MediaQuery.of(context).viewInsets.bottom + 10,
+              bottom: MediaQuery.of(context).viewInsets.bottom + MediaQuery.of(context).padding.bottom + 10,
               top: 10,
               left: 20,
               right: 10,

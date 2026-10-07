@@ -1,4 +1,4 @@
-import 'package:flutter/foundation.dart';
+import 'dart:convert';
 
 enum ShipmentStatus { pending, receiving, inspected, completed, processed }
 
@@ -48,9 +48,11 @@ class ShipmentLog {
 
   // Alias getters for UI compatibility
   String get animalType => supplierName;
+  String get type => supplierName;
   double get liveWeight => totalItemsReceived;
   double get meatWeight => totalItemsReceived;
   double? get farmPrice => shipmentCost;
+  DateTime get slaughterTime => arrivalDate;
 
   ShipmentLog copyWith({
     String? id,
@@ -216,7 +218,6 @@ class WarehouseBatch {
       'category': category,
       'initial_weight': quantity,
       'current_weight': quantity,
-      'weight': quantity,
       'cost_price': costPrice,
       'retail_price': retailPrice,
       'expiry_date': expiryDate?.toIso8601String(),
@@ -225,7 +226,6 @@ class WarehouseBatch {
       'source_name': source?.name,
       'source_location': source?.location,
       'owner_name': source?.owner,
-      'source': source?.toJson(),
       'created_at': createdAt.toIso8601String(),
       'barcode': barcode,
     };
@@ -282,3 +282,246 @@ class StockUnit {
 
 // Alias for UI compatibility
 typedef MeatCut = StockUnit;
+
+enum ProductCondition { good, damaged, expired }
+
+class IntakeItem {
+  final String productId;
+  final String productName;
+  final String sku;
+  final String category;
+  final String? brand;
+  final double quantityReceived;
+  final String batchNumber;
+  final DateTime? expiryDate;
+  final ProductCondition condition;
+  final String? warehouseLocation;
+
+  IntakeItem({
+    required this.productId,
+    required this.productName,
+    required this.sku,
+    required this.category,
+    this.brand,
+    required this.quantityReceived,
+    required this.batchNumber,
+    this.expiryDate,
+    this.condition = ProductCondition.good,
+    this.warehouseLocation,
+  });
+
+  factory IntakeItem.fromJson(Map<String, dynamic> json) {
+    return IntakeItem(
+      productId: json['product_id']?.toString() ?? '',
+      productName: json['product_name']?.toString() ?? '',
+      sku: json['sku']?.toString() ?? '',
+      category: json['category']?.toString() ?? 'General',
+      brand: json['brand']?.toString(),
+      quantityReceived: (json['quantity_received'] as num? ?? 0).toDouble(),
+      batchNumber: json['batch_number']?.toString() ?? '',
+      expiryDate: json['expiry_date'] != null ? DateTime.tryParse(json['expiry_date'].toString()) : null,
+      condition: ProductCondition.values.firstWhere(
+        (e) => e.name == json['condition']?.toString(),
+        orElse: () => ProductCondition.good,
+      ),
+      warehouseLocation: json['warehouse_location']?.toString(),
+    );
+  }
+
+  Map<String, dynamic> toJson() => {
+    'product_id': productId,
+    'product_name': productName,
+    'sku': sku,
+    'category': category,
+    'brand': brand,
+    'quantity_received': quantityReceived,
+    'batch_number': batchNumber,
+    'expiry_date': expiryDate?.toIso8601String(),
+    'condition': condition.name,
+    'warehouse_location': warehouseLocation,
+  };
+}
+
+class WarehouseIntakeRecord {
+  final String id;
+  final String intakeNumber;
+  final DateTime date;
+  final String supplierName;
+  final List<IntakeItem> items;
+  final String? notes;
+  final String? receivedBy;
+  final bool isConfirmed;
+  final double rawQuantity;
+
+  WarehouseIntakeRecord({
+    required this.id,
+    required this.intakeNumber,
+    required this.date,
+    required this.supplierName,
+    required this.items,
+    this.notes,
+    this.receivedBy,
+    this.isConfirmed = true,
+    this.rawQuantity = 0.0,
+  });
+
+  double get totalQuantity {
+    if (items.isNotEmpty) {
+      final sum = items.fold(0.0, (s, item) => s + item.quantityReceived);
+      if (sum > 0) return sum;
+    }
+    return rawQuantity > 0 ? rawQuantity : 0.0;
+  }
+
+  factory WarehouseIntakeRecord.fromJson(Map<String, dynamic> json) {
+    List rawItems = [];
+    if (json['items'] is List) {
+      rawItems = json['items'] as List;
+    } else if (json['items'] is String && (json['items'] as String).isNotEmpty) {
+      try {
+        rawItems = jsonDecode(json['items'] as String) as List? ?? [];
+      } catch (_) {}
+    }
+
+    final recId = json['id']?.toString() ?? '';
+    final numStr = json['intake_number']?.toString() ?? json['tag_number']?.toString() ?? (recId.length > 8 ? 'INT-${recId.substring(recId.length - 8).toUpperCase()}' : 'INT-001');
+    final double rawQty = (json['initial_weight'] as num? ?? json['weight'] as num? ?? json['quantity'] as num? ?? 0.0).toDouble();
+
+    return WarehouseIntakeRecord(
+      id: recId,
+      intakeNumber: numStr,
+      date: json['date'] != null 
+          ? DateTime.tryParse(json['date'].toString()) ?? DateTime.now() 
+          : (json['slaughter_time'] != null 
+              ? DateTime.tryParse(json['slaughter_time'].toString()) ?? DateTime.now() 
+              : (json['created_at'] != null 
+                  ? DateTime.tryParse(json['created_at'].toString()) ?? DateTime.now() 
+                  : (json['slaughter_date'] != null 
+                      ? DateTime.tryParse(json['slaughter_date'].toString()) ?? DateTime.now() 
+                      : (json['transfer_time'] != null 
+                          ? DateTime.tryParse(json['transfer_time'].toString()) ?? DateTime.now() 
+                          : DateTime.now())))),
+      supplierName: json['supplier_name']?.toString() ?? json['type']?.toString() ?? 'General Supplier',
+      items: rawItems.map((e) => IntakeItem.fromJson(Map<String, dynamic>.from(e))).toList(),
+      notes: json['notes']?.toString() ?? json['manual_farm_tag']?.toString(),
+      receivedBy: json['received_by']?.toString(),
+      isConfirmed: json['is_confirmed'] ?? true,
+      rawQuantity: rawQty,
+    );
+  }
+
+  Map<String, dynamic> toJson() => {
+    'id': id,
+    'intake_number': intakeNumber,
+    'date': date.toIso8601String(),
+    'supplier_name': supplierName,
+    'items': items.map((e) => e.toJson()).toList(),
+    'notes': notes,
+    'received_by': receivedBy,
+    'is_confirmed': isConfirmed,
+    'raw_quantity': rawQuantity,
+  };
+}
+
+class DispatchItem {
+  final String productId;
+  final String productName;
+  final String sku;
+  final double quantityDispatched;
+  final String? batchNumber;
+  final DateTime? expiryDate;
+
+  DispatchItem({
+    required this.productId,
+    required this.productName,
+    required this.sku,
+    required this.quantityDispatched,
+    this.batchNumber,
+    this.expiryDate,
+  });
+
+  factory DispatchItem.fromJson(Map<String, dynamic> json) {
+    return DispatchItem(
+      productId: json['product_id']?.toString() ?? '',
+      productName: json['product_name']?.toString() ?? '',
+      sku: json['sku']?.toString() ?? '',
+      quantityDispatched: (json['quantity_dispatched'] as num? ?? 0).toDouble(),
+      batchNumber: json['batch_number']?.toString(),
+      expiryDate: json['expiry_date'] != null ? DateTime.tryParse(json['expiry_date'].toString()) : null,
+    );
+  }
+
+  Map<String, dynamic> toJson() => {
+    'product_id': productId,
+    'product_name': productName,
+    'sku': sku,
+    'quantity_dispatched': quantityDispatched,
+    'batch_number': batchNumber,
+    'expiry_date': expiryDate?.toIso8601String(),
+  };
+}
+
+class WarehouseDispatchRecord {
+  final String id;
+  final String dispatchNumber;
+  final DateTime date;
+  final String destinationStore;
+  final List<DispatchItem> items;
+  final String? notes;
+  final String? dispatchedBy;
+  final bool isConfirmed;
+  final double rawQuantity;
+
+  WarehouseDispatchRecord({
+    required this.id,
+    required this.dispatchNumber,
+    required this.date,
+    required this.destinationStore,
+    required this.items,
+    this.notes,
+    this.dispatchedBy,
+    this.isConfirmed = true,
+    this.rawQuantity = 0.0,
+  });
+
+  double get totalQuantity {
+    if (items.isNotEmpty) {
+      final sum = items.fold(0.0, (s, item) => s + item.quantityDispatched);
+      if (sum > 0) return sum;
+    }
+    return rawQuantity > 0 ? rawQuantity : 0.0;
+  }
+
+  factory WarehouseDispatchRecord.fromJson(Map<String, dynamic> json) {
+    final rawItems = json['items'] as List? ?? [];
+    final recId = json['id']?.toString() ?? '';
+    final numStr = json['dispatch_number']?.toString() ?? json['batch_id']?.toString() ?? (recId.length > 8 ? 'DSP-${recId.substring(recId.length - 8).toUpperCase()}' : 'DSP-001');
+    final double rawQty = (json['weight'] as num? ?? json['quantity'] as num? ?? json['quantity_dispatched'] as num? ?? 0.0).toDouble();
+
+    return WarehouseDispatchRecord(
+      id: recId,
+      dispatchNumber: numStr,
+      date: json['date'] != null 
+          ? DateTime.tryParse(json['date'].toString()) ?? DateTime.now() 
+          : (json['transfer_time'] != null ? DateTime.tryParse(json['transfer_time'].toString()) ?? DateTime.now() : DateTime.now()),
+      destinationStore: json['destination_store']?.toString() ?? json['destination']?.toString() ?? 'City Cosmetics',
+      items: rawItems.map((e) => DispatchItem.fromJson(Map<String, dynamic>.from(e))).toList(),
+      notes: json['notes']?.toString(),
+      dispatchedBy: json['dispatched_by']?.toString() ?? json['meat_type']?.toString(),
+      isConfirmed: json['is_confirmed'] ?? true,
+      rawQuantity: rawQty,
+    );
+  }
+
+  Map<String, dynamic> toJson() => {
+    'id': id,
+    'dispatch_number': dispatchNumber,
+    'date': date.toIso8601String(),
+    'destination_store': destinationStore,
+    'items': items.map((e) => e.toJson()).toList(),
+    'notes': notes,
+    'dispatched_by': dispatchedBy,
+    'is_confirmed': isConfirmed,
+    'raw_quantity': rawQuantity,
+  };
+}

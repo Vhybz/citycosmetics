@@ -116,7 +116,7 @@ class _SalesReportsScreenState extends ConsumerState<SalesReportsScreen> with Si
                   userRole: user.activePrimaryRole.name.toUpperCase(),
                   currentRoute: currentRoute,
                   items: ref.watch(menuItemsProvider),
-                  onTap: (route) => MenuService.navigate(context, route, currentRoute),
+                  onTap: (route) => MenuService.navigate(context, ref, route, currentRoute),
                 ),
               ),
         body: Row(
@@ -128,7 +128,7 @@ class _SalesReportsScreenState extends ConsumerState<SalesReportsScreen> with Si
                 userRole: user.activePrimaryRole.name.toUpperCase(),
                 currentRoute: currentRoute,
                 items: ref.watch(menuItemsProvider),
-                onTap: (route) => MenuService.navigate(context, route, currentRoute),
+                onTap: (route) => MenuService.navigate(context, ref, route, currentRoute),
               ),
             Expanded(
               child: Column(
@@ -1034,7 +1034,15 @@ class _SalesReportsScreenState extends ConsumerState<SalesReportsScreen> with Si
                             ),
                           )),
                           const Divider(height: 32),
+                          if (sale.totalDiscount > 0) ...[
+                            _detailRow(detailsContext, 'TOTAL DISCOUNT', '-₵${sale.totalDiscount.toStringAsFixed(2)}', color: Colors.green),
+                            const Divider(height: 32),
+                          ],
                           _detailRow(detailsContext, 'NET INVOICE VALUE', '₵${sale.netInvoiceValue.toStringAsFixed(2)}', isBold: true, color: theme.colorScheme.primary),
+                          if (sale.balance > 0.01) ...[
+                            const Divider(height: 16),
+                            _detailRow(detailsContext, 'OUTSTANDING DEBT', '₵${sale.balance.toStringAsFixed(2)}', isBold: true, color: Colors.orange.shade800),
+                          ],
                           const Divider(height: 32),
                           Text('PAYMENTS', style: TextStyle(fontSize: 10, color: theme.colorScheme.onSurfaceVariant, fontWeight: FontWeight.bold)),
                           const SizedBox(height: 8),
@@ -2213,117 +2221,210 @@ class _SalesReportsScreenState extends ConsumerState<SalesReportsScreen> with Si
   }
 
   void _handleCloseDailySales(BuildContext context, WidgetRef ref, double currentBalance, {DateTime? targetDate, String? initialNote}) {
-    final amountController = TextEditingController(text: currentBalance.toStringAsFixed(2));
-    final noteController = TextEditingController(text: initialNote);
     final closureDate = targetDate ?? DateTime.now();
-
     final salesHistory = ref.read(saleHistoryProvider);
     final breakdown = TillNotifier.getPaymentBreakdownForDate(closureDate, salesHistory);
+
+    final expectedPhysicalCash = breakdown.totalPhysicalCash;
+    final amountController = TextEditingController(text: expectedPhysicalCash.toStringAsFixed(2));
+    final noteController = TextEditingController(text: initialNote);
+
     final debtCollectionsCash = TillNotifier.getDebtCollectionsForDate(closureDate, salesHistory, cashOnly: true);
     final debtCollectionsAll = TillNotifier.getDebtCollectionsForDate(closureDate, salesHistory, cashOnly: false);
     final double debtCollectionsCashTotal = debtCollectionsCash.fold(0.0, (sum, c) => sum + c.amountPaid);
     
     showDialog(
       context: context,
-      builder: (context) => AlertDialog(
-        title: Row(
-          children: [
-            const Icon(Icons.lock_clock, color: Colors.orange),
-            const SizedBox(width: 8),
-            const Expanded(child: Text('Daily Sales Closure', style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold))),
-          ],
-        ),
-        content: SingleChildScrollView(
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Text('Confirming cash taking for ${DateFormat('EEEE, MMM dd, yyyy').format(closureDate)}.', style: const TextStyle(fontSize: 12, color: Colors.blue, fontWeight: FontWeight.bold)),
-              const SizedBox(height: 12),
-              
-              _buildPaymentBreakdownCard(breakdown, currentBalance, context),
+      builder: (context) => StatefulBuilder(
+        builder: (context, setModalState) {
+          final enteredCash = double.tryParse(amountController.text) ?? 0.0;
+          final variance = enteredCash - expectedPhysicalCash;
 
-              _buildDebtCollectionsView(debtCollectionsAll, context),
-
-              if (debtCollectionsCashTotal > 0) ...[
-                const SizedBox(height: 10),
-                Container(
-                  padding: const EdgeInsets.all(8),
-                  decoration: BoxDecoration(
-                    color: Colors.amber.withValues(alpha: 0.15),
-                    borderRadius: BorderRadius.circular(8),
-                    border: Border.all(color: Colors.amber.shade700.withValues(alpha: 0.4)),
-                  ),
-                  child: Row(
-                    children: [
-                      Icon(Icons.info_outline, size: 16, color: Colors.amber.shade900),
-                      const SizedBox(width: 8),
-                      Expanded(
-                        child: Text(
-                          'Note: Physical Cash in shop (₵${breakdown.totalPhysicalCash.toStringAsFixed(2)}) includes ₵${debtCollectionsCashTotal.toStringAsFixed(2)} in cash debt repayments.',
-                          style: TextStyle(fontSize: 10, color: Colors.amber.shade900, fontWeight: FontWeight.w500),
-                        ),
-                      ),
-                    ],
+          return AlertDialog(
+            insetPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 16),
+            title: Row(
+              children: [
+                const Icon(Icons.lock_clock, color: Colors.orange),
+                const SizedBox(width: 8),
+                const Expanded(
+                  child: Text(
+                    'Daily Sales Closure & Reconciliation',
+                    style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
+                    overflow: TextOverflow.ellipsis,
+                    maxLines: 2,
                   ),
                 ),
               ],
+            ),
+            content: SingleChildScrollView(
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text('Confirming cash taking for ${DateFormat('EEEE, MMM dd, yyyy').format(closureDate)}.', style: const TextStyle(fontSize: 12, color: Colors.blue, fontWeight: FontWeight.bold)),
+                  const SizedBox(height: 12),
+                  
+                  _buildPaymentBreakdownCard(breakdown, expectedPhysicalCash, context),
 
-              const SizedBox(height: 16),
-              TextField(
-                controller: amountController,
-                keyboardType: TextInputType.number,
-                decoration: const InputDecoration(labelText: 'Closing Amount (GHS)', prefixText: '₵ ', border: OutlineInputBorder()),
+                  _buildDebtCollectionsView(debtCollectionsAll, context),
+
+                  if (debtCollectionsCashTotal > 0) ...[
+                    const SizedBox(height: 10),
+                    Container(
+                      padding: const EdgeInsets.all(8),
+                      decoration: BoxDecoration(
+                        color: Colors.amber.withValues(alpha: 0.15),
+                        borderRadius: BorderRadius.circular(8),
+                        border: Border.all(color: Colors.amber.shade700.withValues(alpha: 0.4)),
+                      ),
+                      child: Row(
+                        children: [
+                          Icon(Icons.info_outline, size: 16, color: Colors.amber.shade900),
+                          const SizedBox(width: 8),
+                          Expanded(
+                            child: Text(
+                              'Note: Physical Cash in shop (₵${breakdown.totalPhysicalCash.toStringAsFixed(2)}) includes ₵${debtCollectionsCashTotal.toStringAsFixed(2)} in cash debt repayments.',
+                              style: TextStyle(fontSize: 10, color: Colors.amber.shade900, fontWeight: FontWeight.w500),
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ],
+
+                  const SizedBox(height: 16),
+                  TextField(
+                    controller: amountController,
+                    keyboardType: const TextInputType.numberWithOptions(decimal: true),
+                    onChanged: (_) => setModalState(() {}),
+                    decoration: const InputDecoration(labelText: 'Counted Physical Cash in Drawer (GHS)', prefixText: '₵ ', border: OutlineInputBorder()),
+                  ),
+                  const SizedBox(height: 8),
+
+                  // Live Cash Variance Badge
+                  if (variance.abs() < 0.01)
+                    Container(
+                      padding: const EdgeInsets.all(8),
+                      decoration: BoxDecoration(color: Colors.green.shade50, borderRadius: BorderRadius.circular(6), border: Border.all(color: Colors.green.shade300)),
+                      child: Row(
+                        children: [
+                          Icon(Icons.check_circle_rounded, color: Colors.green.shade800, size: 16),
+                          const SizedBox(width: 8),
+                          Expanded(
+                            child: Text(
+                              'PERFECT MATCH: Cash count matches expected till cash',
+                              style: TextStyle(fontSize: 11, fontWeight: FontWeight.bold, color: Colors.green.shade900),
+                              overflow: TextOverflow.ellipsis,
+                              maxLines: 2,
+                            ),
+                          ),
+                        ],
+                      ),
+                    )
+                  else if (variance < -0.01)
+                    Container(
+                      padding: const EdgeInsets.all(8),
+                      decoration: BoxDecoration(color: Colors.red.shade50, borderRadius: BorderRadius.circular(6), border: Border.all(color: Colors.red.shade300)),
+                      child: Row(
+                        children: [
+                          Icon(Icons.warning_amber_rounded, color: Colors.red.shade800, size: 16),
+                          const SizedBox(width: 8),
+                          Expanded(
+                            child: Text(
+                              'CASH SHORTAGE: -₵${(-variance).toStringAsFixed(2)} below expected till cash',
+                              style: TextStyle(fontSize: 11, fontWeight: FontWeight.bold, color: Colors.red.shade900),
+                              overflow: TextOverflow.ellipsis,
+                              maxLines: 2,
+                            ),
+                          ),
+                        ],
+                      ),
+                    )
+                  else
+                    Container(
+                      padding: const EdgeInsets.all(8),
+                      decoration: BoxDecoration(color: Colors.amber.shade50, borderRadius: BorderRadius.circular(6), border: Border.all(color: Colors.amber.shade300)),
+                      child: Row(
+                        children: [
+                          Icon(Icons.info_outline_rounded, color: Colors.amber.shade900, size: 16),
+                          const SizedBox(width: 8),
+                          Expanded(
+                            child: Text(
+                              'CASH OVERAGE: +₵${variance.toStringAsFixed(2)} above expected till cash',
+                              style: TextStyle(fontSize: 11, fontWeight: FontWeight.bold, color: Colors.amber.shade900),
+                              overflow: TextOverflow.ellipsis,
+                              maxLines: 2,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+
+                  const SizedBox(height: 12),
+                  TextField(
+                    controller: noteController,
+                    decoration: const InputDecoration(labelText: 'Closure Note (Optional)', border: OutlineInputBorder()),
+                  ),
+                ],
               ),
-              const SizedBox(height: 12),
-              TextField(
-                controller: noteController,
-                decoration: const InputDecoration(labelText: 'Closure Note (Optional)', border: OutlineInputBorder()),
+            ),
+            actions: [
+              TextButton(onPressed: () => Navigator.pop(context), child: const Text('Cancel')),
+              ElevatedButton.icon(
+                onPressed: () async {
+                  final amount = double.tryParse(amountController.text);
+                  if (amount != null && amount > 0) {
+                    String closureTitle = noteController.text.trim();
+                    if (closureTitle.isEmpty) {
+                      final String debtNotePart = debtCollectionsCashTotal > 0 
+                          ? ' (Includes Debt Collections: ₵${debtCollectionsCashTotal.toStringAsFixed(2)})'
+                          : '';
+                      closureTitle = 'Daily Sales Closure for ${DateFormat('yyyy-MM-dd').format(closureDate)}$debtNotePart';
+                    }
+
+                    final expense = ExpenseRecord(
+                      id: UuidUtils.generate(),
+                      title: closureTitle,
+                      category: 'Daily Sales Closure',
+                      amount: amount,
+                      date: closureDate,
+                    );
+                    
+                    final tillState = ref.read(tillProvider);
+                    final totalPending = tillState.pendingByDay.values.fold(0.0, (sum, val) => sum + val);
+
+                    await ref.read(expenseProvider.notifier).recordCEOWithdrawal(
+                      expense: expense,
+                      currentTillBalance: expectedPhysicalCash,
+                      totalRemainingAfter: totalPending - amount,
+                    );
+
+                    // Print / Export Till Closure PDF Receipt
+                    await ReportService.generateDailyTillClosureReceipt(
+                      closureDate: closureDate,
+                      physicalCashSales: breakdown.physicalCashSales,
+                      physicalCashDebt: breakdown.physicalCashDebt,
+                      totalPhysicalCash: breakdown.totalPhysicalCash,
+                      momoTotal: breakdown.totalMomo,
+                      bankTotal: breakdown.totalBank,
+                      grossRevenue: breakdown.totalRevenue,
+                      closingAmount: amount,
+                      note: closureTitle,
+                    );
+
+                    if (context.mounted) {
+                      Navigator.pop(context);
+                      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Daily sales closed, Till Receipt Generated & Security SMS Sent')));
+                    }
+                  }
+                },
+                icon: const Icon(Icons.print_rounded, size: 16),
+                label: const Text('Confirm Closure & Print'),
+                style: ElevatedButton.styleFrom(backgroundColor: Colors.green.shade700, foregroundColor: Colors.white),
               ),
             ],
-          ),
-        ),
-        actions: [
-          TextButton(onPressed: () => Navigator.pop(context), child: const Text('Cancel')),
-          ElevatedButton(
-            onPressed: () async {
-              final amount = double.tryParse(amountController.text);
-              if (amount != null && amount > 0) {
-                String closureTitle = noteController.text.trim();
-                if (closureTitle.isEmpty) {
-                  final String debtNotePart = debtCollectionsCashTotal > 0 
-                      ? ' (Includes Debt Collections: ₵${debtCollectionsCashTotal.toStringAsFixed(2)})'
-                      : '';
-                  closureTitle = 'Daily Sales Closure for ${DateFormat('yyyy-MM-dd').format(closureDate)}$debtNotePart';
-                }
-
-                final expense = ExpenseRecord(
-                  id: UuidUtils.generate(),
-                  title: closureTitle,
-                  category: 'Daily Sales Closure',
-                  amount: amount,
-                  date: closureDate,
-                );
-                
-                final tillState = ref.read(tillProvider);
-                final totalPending = tillState.pendingByDay.values.fold(0.0, (sum, val) => sum + val);
-
-                await ref.read(expenseProvider.notifier).recordCEOWithdrawal(
-                  expense: expense,
-                  currentTillBalance: currentBalance,
-                  totalRemainingAfter: totalPending - amount,
-                );
-
-                if (context.mounted) {
-                  Navigator.pop(context);
-                  ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Daily sales closed & Security SMS Sent')));
-                }
-              }
-            },
-            style: ElevatedButton.styleFrom(backgroundColor: Colors.green.shade700, foregroundColor: Colors.white),
-            child: const Text('Confirm Closure'),
-          ),
-        ],
+          );
+        },
       ),
     );
   }
@@ -2343,16 +2444,22 @@ class _SalesReportsScreenState extends ConsumerState<SalesReportsScreen> with Si
           Row(
             mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: [
-              Row(
-                children: [
-                  const Icon(Icons.payments_rounded, size: 16, color: Colors.green),
-                  const SizedBox(width: 6),
-                  Text(
-                    'PHYSICAL CASH IN TILL:',
-                    style: TextStyle(fontSize: 11, fontWeight: FontWeight.bold, color: Colors.green.shade800),
-                  ),
-                ],
+              Expanded(
+                child: Row(
+                  children: [
+                    const Icon(Icons.payments_rounded, size: 16, color: Colors.green),
+                    const SizedBox(width: 6),
+                    Expanded(
+                      child: Text(
+                        'PHYSICAL CASH IN TILL:',
+                        style: TextStyle(fontSize: 11, fontWeight: FontWeight.bold, color: Colors.green.shade800),
+                        overflow: TextOverflow.ellipsis,
+                      ),
+                    ),
+                  ],
+                ),
               ),
+              const SizedBox(width: 4),
               Text(
                 '₵${breakdown.totalPhysicalCash.toStringAsFixed(2)}',
                 style: TextStyle(fontSize: 13, fontWeight: FontWeight.bold, color: Colors.green.shade900),
@@ -2364,8 +2471,22 @@ class _SalesReportsScreenState extends ConsumerState<SalesReportsScreen> with Si
             child: Row(
               mainAxisAlignment: MainAxisAlignment.spaceBetween,
               children: [
-                Text('Direct Cash: ₵${breakdown.physicalCashSales.toStringAsFixed(2)}', style: TextStyle(fontSize: 10, color: Colors.grey.shade700)),
-                Text('Cash Debt: ₵${breakdown.physicalCashDebt.toStringAsFixed(2)}', style: TextStyle(fontSize: 10, color: Colors.grey.shade700)),
+                Expanded(
+                  child: Text(
+                    'Direct Cash: ₵${breakdown.physicalCashSales.toStringAsFixed(2)}',
+                    style: TextStyle(fontSize: 10, color: Colors.grey.shade700),
+                    overflow: TextOverflow.ellipsis,
+                  ),
+                ),
+                const SizedBox(width: 4),
+                Expanded(
+                  child: Text(
+                    'Cash Debt: ₵${breakdown.physicalCashDebt.toStringAsFixed(2)}',
+                    textAlign: TextAlign.end,
+                    style: TextStyle(fontSize: 10, color: Colors.grey.shade700),
+                    overflow: TextOverflow.ellipsis,
+                  ),
+                ),
               ],
             ),
           ),
@@ -2373,16 +2494,22 @@ class _SalesReportsScreenState extends ConsumerState<SalesReportsScreen> with Si
           Row(
             mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: [
-              Row(
-                children: [
-                  const Icon(Icons.phone_android_rounded, size: 16, color: Colors.orange),
-                  const SizedBox(width: 6),
-                  Text(
-                    'MOBILE MONEY (MOMO):',
-                    style: TextStyle(fontSize: 11, fontWeight: FontWeight.bold, color: Colors.orange.shade800),
-                  ),
-                ],
+              Expanded(
+                child: Row(
+                  children: [
+                    const Icon(Icons.phone_android_rounded, size: 16, color: Colors.orange),
+                    const SizedBox(width: 6),
+                    Expanded(
+                      child: Text(
+                        'MOBILE MONEY (MOMO):',
+                        style: TextStyle(fontSize: 11, fontWeight: FontWeight.bold, color: Colors.orange.shade800),
+                        overflow: TextOverflow.ellipsis,
+                      ),
+                    ),
+                  ],
+                ),
               ),
+              const SizedBox(width: 4),
               Text(
                 '₵${breakdown.totalMomo.toStringAsFixed(2)}',
                 style: TextStyle(fontSize: 13, fontWeight: FontWeight.bold, color: Colors.orange.shade900),
@@ -2394,8 +2521,22 @@ class _SalesReportsScreenState extends ConsumerState<SalesReportsScreen> with Si
             child: Row(
               mainAxisAlignment: MainAxisAlignment.spaceBetween,
               children: [
-                Text('Direct MoMo: ₵${breakdown.momoSales.toStringAsFixed(2)}', style: TextStyle(fontSize: 10, color: Colors.grey.shade700)),
-                Text('MoMo Debt: ₵${breakdown.momoDebt.toStringAsFixed(2)}', style: TextStyle(fontSize: 10, color: Colors.grey.shade700)),
+                Expanded(
+                  child: Text(
+                    'Direct MoMo: ₵${breakdown.momoSales.toStringAsFixed(2)}',
+                    style: TextStyle(fontSize: 10, color: Colors.grey.shade700),
+                    overflow: TextOverflow.ellipsis,
+                  ),
+                ),
+                const SizedBox(width: 4),
+                Expanded(
+                  child: Text(
+                    'MoMo Debt: ₵${breakdown.momoDebt.toStringAsFixed(2)}',
+                    textAlign: TextAlign.end,
+                    style: TextStyle(fontSize: 10, color: Colors.grey.shade700),
+                    overflow: TextOverflow.ellipsis,
+                  ),
+                ),
               ],
             ),
           ),
@@ -2404,16 +2545,22 @@ class _SalesReportsScreenState extends ConsumerState<SalesReportsScreen> with Si
             Row(
               mainAxisAlignment: MainAxisAlignment.spaceBetween,
               children: [
-                Row(
-                  children: [
-                    const Icon(Icons.account_balance_rounded, size: 16, color: Colors.purple),
-                    const SizedBox(width: 6),
-                    Text(
-                      'BANK DEPOSITS:',
-                      style: TextStyle(fontSize: 11, fontWeight: FontWeight.bold, color: Colors.purple.shade800),
-                    ),
-                  ],
+                Expanded(
+                  child: Row(
+                    children: [
+                      const Icon(Icons.account_balance_rounded, size: 16, color: Colors.purple),
+                      const SizedBox(width: 6),
+                      Expanded(
+                        child: Text(
+                          'BANK DEPOSITS:',
+                          style: TextStyle(fontSize: 11, fontWeight: FontWeight.bold, color: Colors.purple.shade800),
+                          overflow: TextOverflow.ellipsis,
+                        ),
+                      ),
+                    ],
+                  ),
                 ),
+                const SizedBox(width: 4),
                 Text(
                   '₵${breakdown.totalBank.toStringAsFixed(2)}',
                   style: TextStyle(fontSize: 13, fontWeight: FontWeight.bold, color: Colors.purple.shade900),
@@ -2425,8 +2572,22 @@ class _SalesReportsScreenState extends ConsumerState<SalesReportsScreen> with Si
               child: Row(
                 mainAxisAlignment: MainAxisAlignment.spaceBetween,
                 children: [
-                  Text('Direct Bank: ₵${breakdown.bankSales.toStringAsFixed(2)}', style: TextStyle(fontSize: 10, color: Colors.grey.shade700)),
-                  Text('Bank Debt: ₵${breakdown.bankDebt.toStringAsFixed(2)}', style: TextStyle(fontSize: 10, color: Colors.grey.shade700)),
+                  Expanded(
+                    child: Text(
+                      'Direct Bank: ₵${breakdown.bankSales.toStringAsFixed(2)}',
+                      style: TextStyle(fontSize: 10, color: Colors.grey.shade700),
+                      overflow: TextOverflow.ellipsis,
+                    ),
+                  ),
+                  const SizedBox(width: 4),
+                  Expanded(
+                    child: Text(
+                      'Bank Debt: ₵${breakdown.bankDebt.toStringAsFixed(2)}',
+                      textAlign: TextAlign.end,
+                      style: TextStyle(fontSize: 10, color: Colors.grey.shade700),
+                      overflow: TextOverflow.ellipsis,
+                    ),
+                  ),
                 ],
               ),
             ),
@@ -2435,8 +2596,18 @@ class _SalesReportsScreenState extends ConsumerState<SalesReportsScreen> with Si
           Row(
             mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: [
-              const Text('TOTAL PERIOD REVENUE:', style: TextStyle(fontSize: 11, fontWeight: FontWeight.bold)),
-              Text('₵${breakdown.totalRevenue.toStringAsFixed(2)}', style: const TextStyle(fontSize: 12, fontWeight: FontWeight.bold)),
+              const Expanded(
+                child: Text(
+                  'TOTAL PERIOD REVENUE:',
+                  style: TextStyle(fontSize: 11, fontWeight: FontWeight.bold),
+                  overflow: TextOverflow.ellipsis,
+                ),
+              ),
+              const SizedBox(width: 4),
+              Text(
+                '₵${breakdown.totalRevenue.toStringAsFixed(2)}',
+                style: const TextStyle(fontSize: 12, fontWeight: FontWeight.bold),
+              ),
             ],
           ),
         ],
@@ -2461,30 +2632,41 @@ class _SalesReportsScreenState extends ConsumerState<SalesReportsScreen> with Si
           Row(
             mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: [
-              const Row(
-                children: [
-                  Icon(Icons.people_alt_rounded, size: 16, color: Colors.blue),
-                  SizedBox(width: 6),
-                  Text(
-                    'DEBT PAYMENTS IN THIS PERIOD',
-                    style: TextStyle(
-                      fontSize: 11,
-                      fontWeight: FontWeight.bold,
-                      color: Colors.blue,
-                      letterSpacing: 0.5,
+              Expanded(
+                child: Row(
+                  children: const [
+                    Icon(Icons.people_alt_rounded, size: 16, color: Colors.blue),
+                    SizedBox(width: 6),
+                    Expanded(
+                      child: Text(
+                        'DEBT PAYMENTS IN PERIOD',
+                        style: TextStyle(
+                          fontSize: 11,
+                          fontWeight: FontWeight.bold,
+                          color: Colors.blue,
+                          letterSpacing: 0.5,
+                        ),
+                        overflow: TextOverflow.ellipsis,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              const SizedBox(width: 4),
+              Flexible(
+                child: Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+                  decoration: BoxDecoration(
+                    color: Colors.blue.withValues(alpha: 0.15),
+                    borderRadius: BorderRadius.circular(12),
+                  ),
+                  child: FittedBox(
+                    fit: BoxFit.scaleDown,
+                    child: Text(
+                      '${debtCollections.length} paid • Total ₵${totalDebtPaid.toStringAsFixed(2)}',
+                      style: const TextStyle(fontSize: 10, fontWeight: FontWeight.bold, color: Colors.blue),
                     ),
                   ),
-                ],
-              ),
-              Container(
-                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
-                decoration: BoxDecoration(
-                  color: Colors.blue.withValues(alpha: 0.15),
-                  borderRadius: BorderRadius.circular(12),
-                ),
-                child: Text(
-                  '${debtCollections.length} paid • Total ₵${totalDebtPaid.toStringAsFixed(2)}',
-                  style: const TextStyle(fontSize: 10, fontWeight: FontWeight.bold, color: Colors.blue),
                 ),
               ),
             ],
@@ -2497,9 +2679,12 @@ class _SalesReportsScreenState extends ConsumerState<SalesReportsScreen> with Si
                 children: [
                   Icon(Icons.info_outline, size: 14, color: Colors.grey),
                   SizedBox(width: 6),
-                  Text(
-                    'No debt repayments recorded for this period.',
-                    style: TextStyle(fontSize: 11, color: Colors.grey, fontStyle: FontStyle.italic),
+                  Expanded(
+                    child: Text(
+                      'No debt repayments recorded for this period.',
+                      style: TextStyle(fontSize: 11, color: Colors.grey, fontStyle: FontStyle.italic),
+                      overflow: TextOverflow.ellipsis,
+                    ),
                   ),
                 ],
               ),
@@ -2547,6 +2732,7 @@ class _SalesReportsScreenState extends ConsumerState<SalesReportsScreen> with Si
                               ],
                             ),
                           ),
+                          const SizedBox(width: 4),
                           Text(
                             '₵${dc.amountPaid.toStringAsFixed(2)}',
                             style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold, color: Colors.green.shade800),
@@ -2557,10 +2743,14 @@ class _SalesReportsScreenState extends ConsumerState<SalesReportsScreen> with Si
                       Row(
                         mainAxisAlignment: MainAxisAlignment.spaceBetween,
                         children: [
-                          Text(
-                            'Phone: ${dc.customerPhone} • Ref: #$invoiceShort • ${DateFormat('HH:mm').format(dc.paymentTime)}',
-                            style: TextStyle(fontSize: 10, color: Colors.grey.shade600),
+                          Expanded(
+                            child: Text(
+                              'Phone: ${dc.customerPhone} • Ref: #$invoiceShort • ${DateFormat('HH:mm').format(dc.paymentTime)}',
+                              style: TextStyle(fontSize: 10, color: Colors.grey.shade600),
+                              overflow: TextOverflow.ellipsis,
+                            ),
                           ),
+                          const SizedBox(width: 4),
                           Container(
                             padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 1),
                             decoration: BoxDecoration(
@@ -2584,14 +2774,17 @@ class _SalesReportsScreenState extends ConsumerState<SalesReportsScreen> with Si
                             color: dc.isFullSettlement ? Colors.green.shade700 : Colors.orange.shade900,
                           ),
                           const SizedBox(width: 4),
-                          Text(
-                            dc.isFullSettlement
-                                ? 'Fully Cleared'
-                                : 'Partial Payment (Remaining Bal: ₵${dc.remainingBalance.toStringAsFixed(2)})',
-                            style: TextStyle(
-                              fontSize: 10,
-                              fontWeight: FontWeight.w600,
-                              color: dc.isFullSettlement ? Colors.green.shade800 : Colors.orange.shade900,
+                          Expanded(
+                            child: Text(
+                              dc.isFullSettlement
+                                  ? 'Fully Cleared'
+                                  : 'Partial Payment (Remaining Bal: ₵${dc.remainingBalance.toStringAsFixed(2)})',
+                              style: TextStyle(
+                                fontSize: 10,
+                                fontWeight: FontWeight.w600,
+                                color: dc.isFullSettlement ? Colors.green.shade800 : Colors.orange.shade900,
+                              ),
+                              overflow: TextOverflow.ellipsis,
                             ),
                           ),
                         ],

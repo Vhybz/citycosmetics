@@ -1,10 +1,13 @@
 import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:fl_chart/fl_chart.dart';
 import '../../core/constants.dart';
 import '../../widgets/app_sidebar.dart';
 import '../../widgets/responsive_layout.dart';
 import '../../widgets/main_app_bar.dart';
+import '../../widgets/attendance_dialog.dart';
+import '../../services/attendance_service.dart';
 import 'package:intl/intl.dart';
 import '../../services/sale_provider.dart';
 import '../../services/expense_provider.dart';
@@ -12,8 +15,6 @@ import '../../models/sale_model.dart';
 import '../../services/notification_service.dart';
 import '../../services/product_service.dart';
 import '../../services/warehouse_service.dart';
-import '../../services/butcher_service.dart';
-import '../../models/warehouse_models.dart' hide SlaughterLog;
 import '../../models/system_models.dart';
 
 import '../../services/menu_service.dart';
@@ -30,6 +31,18 @@ import '../../core/uuid_utils.dart';
 import '../../models/expense_model.dart';
 import '../../services/daily_reminder_service.dart';
 
+class _SkincareTip {
+  final String badge;
+  final String title;
+  final String detail;
+
+  const _SkincareTip({
+    required this.badge,
+    required this.title,
+    required this.detail,
+  });
+}
+
 class AdminDashboard extends ConsumerStatefulWidget {
   const AdminDashboard({super.key});
 
@@ -38,27 +51,89 @@ class AdminDashboard extends ConsumerStatefulWidget {
 }
 
 class _AdminDashboardState extends ConsumerState<AdminDashboard> {
-  late PageController _pageController;
-  int _currentPage = 0;
   Timer? _timer;
+  int _cardIndex0 = 0;
+  int _cardIndex1 = 1;
+  int _cardIndex2 = 2;
+  int _cardIndex3 = 3;
 
   final List<String> _bannerImages = [
-    'assets/images/meat_art.jpg',
-    'assets/images/beef_art.jpg',
-    'assets/images/pork_art.jpg',
-    'assets/images/beef_art2.jpg',
-    'assets/images/butcher_beef.jpg',
-    'assets/images/meat_on_scale.jpg',
-    'assets/images/beef.jpg',
-    'assets/images/pork.jpg',
-    'assets/images/chicken.jpg',
-    'assets/images/for_splash.jpg',
+    'assets/images/serums/cos1.jpg',
+    'assets/images/serums/cos2.jpg',
+    'assets/images/serums/cos3.jpg',
+    'assets/images/serums/cos4.jpg',
+    'assets/images/lotions/cos5.jpg',
+    'assets/images/creams/cos6.jpg',
+    'assets/images/creams/cos7.jpg',
+    'assets/images/lotions/cos8.jpg',
+    'assets/images/lotions/cos9.jpg',
+    'assets/images/lotions/cos10.jpg',
+    'assets/images/lotions/cos11.jpg',
+    'assets/images/handcream/cosX.jpg',
+    'assets/images/lotions/cosx1.jpg',
+    'assets/images/serums/ccc.jpg',
+    'assets/images/serums/cx.jpg',
+    'assets/images/bgi/ca.jpg',
+    'assets/images/bgi/cc.jpg',
   ];
+
+  _SkincareTip _getTipForProductImage(String imagePath) {
+    final path = imagePath.toLowerCase();
+
+    if (path.contains('/serums/') || path.contains('cos1.') || path.contains('cos2.') || path.contains('cos3.') || path.contains('cos4.') || path.contains('ccc.') || path.contains('cx.')) {
+      return const _SkincareTip(
+        badge: 'SERUM CARE TIP',
+        title: 'Apply Serums On Damp Skin',
+        detail: 'Serums with Hyaluronic Acid absorb 10x deeper when applied on damp skin for maximum glow.',
+      );
+    } else if (path.contains('/lotions/') || path.contains('cos5.') || path.contains('cos8.') || path.contains('cos9.') || path.contains('cos10.') || path.contains('cos11.')) {
+      return const _SkincareTip(
+        badge: 'LOTION CARE TIP',
+        title: 'Moisturize Within 3 Minutes',
+        detail: 'Apply body lotion within 3 minutes of showering to lock in moisture and protect skin barrier.',
+      );
+    } else if (path.contains('/creams/') || path.contains('/face_cream/') || path.contains('cos6.') || path.contains('cos7.')) {
+      return const _SkincareTip(
+        badge: 'CREAM CARE TIP',
+        title: 'Nourish Facial Skin Barrier',
+        detail: 'Rich face creams seal in hydration and shield skin against daily environmental pollutants.',
+      );
+    } else if (path.contains('/handcream/') || path.contains('cosx.')) {
+      return const _SkincareTip(
+        badge: 'HAND CARE TIP',
+        title: 'Hydrate After Washing Hands',
+        detail: 'Keep hand cream handy to replenish essential oils lost during frequent hand sanitizing.',
+      );
+    } else if (path.contains('/perfumes/') || path.contains('/bodysplash/')) {
+      return const _SkincareTip(
+        badge: 'FRAGRANCE TIP',
+        title: 'Spray On Warm Pulse Points',
+        detail: 'Apply perfume or body splash on pulse points (wrists & neck) for long-lasting luxury scent.',
+      );
+    } else if (path.contains('/deodorant/')) {
+      return const _SkincareTip(
+        badge: 'HYGIENE CARE TIP',
+        title: 'Apply Deodorant On Clean Skin',
+        detail: 'Apply antiperspirant on dry, clean skin for 24-hour freshness and sweat protection.',
+      );
+    } else if (path.contains('/oils/')) {
+      return const _SkincareTip(
+        badge: 'ESSENTIAL OIL TIP',
+        title: 'Lock In Hydration With Oil',
+        detail: 'Facial and body oils act as a protective top coat to seal in all previous skincare steps.',
+      );
+    }
+
+    return const _SkincareTip(
+      badge: 'BEAUTY CARE TIP',
+      title: 'Maintain Daily Skincare Routine',
+      detail: 'Consistent daily cleansing, hydrating, and sun protection keep your skin youthful and healthy.',
+    );
+  }
 
   @override
   void initState() {
     super.initState();
-    _pageController = PageController(initialPage: 0);
     _startTimer();
     
     // Check for Daily End-of-Day SMS Reminder
@@ -69,13 +144,13 @@ class _AdminDashboardState extends ConsumerState<AdminDashboard> {
 
   void _startTimer() {
     _timer = Timer.periodic(const Duration(seconds: 5), (timer) {
-      if (_pageController.hasClients) {
-        _currentPage = (_currentPage + 1) % _bannerImages.length;
-        _pageController.animateToPage(
-          _currentPage,
-          duration: const Duration(milliseconds: 800),
-          curve: Curves.easeInOutCubic,
-        );
+      if (mounted) {
+        setState(() {
+          _cardIndex0 = (_cardIndex0 + 1) % _bannerImages.length;
+          _cardIndex1 = (_cardIndex1 + 2) % _bannerImages.length;
+          _cardIndex2 = (_cardIndex2 + 3) % _bannerImages.length;
+          _cardIndex3 = (_cardIndex3 + 4) % _bannerImages.length;
+        });
       }
     });
   }
@@ -83,7 +158,6 @@ class _AdminDashboardState extends ConsumerState<AdminDashboard> {
   @override
   void dispose() {
     _timer?.cancel();
-    _pageController.dispose();
     super.dispose();
   }
 
@@ -92,10 +166,11 @@ class _AdminDashboardState extends ConsumerState<AdminDashboard> {
     final user = ref.watch(currentUserProvider);
     if (user == null) return const Center(child: CircularProgressIndicator());
 
-    // Check for Birthday
+    // Check for Birthday & Attendance Check-In
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (context.mounted) {
         BirthdayService.checkAndShowBirthdayWish(context, user);
+        AttendanceDialog.checkAndShow(context, ref, user);
       }
     });
 
@@ -146,7 +221,7 @@ class _AdminDashboardState extends ConsumerState<AdminDashboard> {
                       userRole: user.activePrimaryRole.toString().split('.').last.toUpperCase(),
                       currentRoute: currentRoute,
                       items: menuItems,
-                      onTap: (route) => MenuService.navigate(context, route, currentRoute),
+                      onTap: (route) => MenuService.navigate(context, ref, route, currentRoute),
                     ),
                   ),
             body: Row(
@@ -158,7 +233,7 @@ class _AdminDashboardState extends ConsumerState<AdminDashboard> {
                     userRole: user.activePrimaryRole.toString().split('.').last.toUpperCase(),
                     currentRoute: currentRoute,
                     items: menuItems,
-                    onTap: (route) => MenuService.navigate(context, route, currentRoute),
+                    onTap: (route) => MenuService.navigate(context, ref, route, currentRoute),
                   ),
                 Expanded(
                   child: SafeArea(
@@ -170,7 +245,9 @@ class _AdminDashboardState extends ConsumerState<AdminDashboard> {
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
                           _buildHeader(context, dateStr, user, currentBranch),
-                          const SizedBox(height: AppSpacing.l),
+                          const SizedBox(height: AppSpacing.m),
+                          _buildAdminAttendanceBanner(context, ref, user),
+                          const SizedBox(height: AppSpacing.m),
                           _buildBanner(context),
                           const SizedBox(height: AppSpacing.xl),
                           _buildKPIGrid(context, ref),
@@ -196,11 +273,8 @@ class _AdminDashboardState extends ConsumerState<AdminDashboard> {
   Widget _buildPendingActions(BuildContext context, WidgetRef ref) {
     final sales = ref.watch(saleHistoryProvider);
     final saleRequests = sales.where((s) => s.status == SaleStatus.pendingCorrection).toList();
-    
-    final notifications = ref.watch(notificationProvider);
-    final butcherReports = notifications.where((n) => n.title.contains('BUTCHER') && !n.isRead).toList();
 
-    if (saleRequests.isEmpty && butcherReports.isEmpty) return const SizedBox.shrink();
+    if (saleRequests.isEmpty) return const SizedBox.shrink();
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
@@ -214,18 +288,6 @@ class _AdminDashboardState extends ConsumerState<AdminDashboard> {
             color: Colors.orange,
             items: saleRequests,
             onAction: (sale) => _showRectifySaleDialog(context, ref, sale),
-          ),
-          const SizedBox(height: AppSpacing.l),
-        ],
-        if (butcherReports.isNotEmpty) ...[
-          _buildActionSection(
-            context,
-            ref,
-            title: 'Warehouse Unit Reports',
-            icon: Icons.warning_amber_rounded,
-            color: Colors.red,
-            items: butcherReports,
-            onAction: (report) => _showRectifyButcherReportDialog(context, ref, report),
           ),
         ],
       ],
@@ -318,7 +380,7 @@ class _AdminDashboardState extends ConsumerState<AdminDashboard> {
         title: const Text('Confirm Deletion'),
         content: Text(item is SaleRecord 
           ? 'Are you sure you want to CANCEL this sale completely? This action is irreversible.'
-          : 'Are you sure you want to DISMISS this butcher report?'),
+          : 'Are you sure you want to DISMISS this notification report?'),
         actions: [
           TextButton(onPressed: () => Navigator.pop(context), child: const Text('Go Back')),
           ElevatedButton(
@@ -386,7 +448,7 @@ class _AdminDashboardState extends ConsumerState<AdminDashboard> {
                               width: 80,
                               child: TextFormField(
                                 initialValue: item.quantity.toString(),
-                                decoration: const InputDecoration(suffixText: 'kg', isDense: true),
+                                decoration: InputDecoration(suffixText: item.selectedUnit ?? item.product.unit, isDense: true),
                                 keyboardType: TextInputType.number,
                                 style: const TextStyle(fontSize: 12),
                                 onChanged: (value) {
@@ -465,42 +527,89 @@ class _AdminDashboardState extends ConsumerState<AdminDashboard> {
     );
   }
 
-  void _showRectifyButcherReportDialog(BuildContext context, WidgetRef ref, SystemNotification report) {
-    showDialog(
-      context: context,
-      builder: (context) => AlertDialog(
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(AppRadius.l)),
-        title: const Text('Rectify Butcher Issue'),
-        content: Column(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Text('Reported: ${report.message}', style: const TextStyle(fontWeight: FontWeight.bold, color: Colors.red)),
-            const SizedBox(height: 16),
-            const TextField(
-              decoration: InputDecoration(
-                labelText: 'Resolution Action',
-                hintText: 'e.g., Equipment repaired, Stock replenished',
-                border: OutlineInputBorder(),
-              ),
-            ),
-          ],
+  Widget _buildAdminAttendanceBanner(BuildContext context, WidgetRef ref, UserAccount user) {
+    if (DateTime.now().weekday == DateTime.sunday) return const SizedBox.shrink();
+
+    ref.watch(attendanceRecordsProvider);
+    final notifier = ref.read(attendanceRecordsProvider.notifier);
+    final todayRecord = notifier.getTodayAttendanceForUser(user.id);
+
+    if (todayRecord != null) return const SizedBox.shrink();
+
+    final theme = Theme.of(context);
+    final isMobile = MediaQuery.of(context).size.width < 550;
+
+    final textContent = Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        const Text(
+          'Daily Shift Attendance Pending',
+          style: TextStyle(fontWeight: FontWeight.bold, fontSize: 13, color: Colors.purple),
         ),
-        actions: [
-          TextButton(onPressed: () => Navigator.pop(context), child: const Text('Cancel')),
-          ElevatedButton(
-            onPressed: () {
-              ref.read(notificationProvider.notifier).markAsRead(report.id);
-              Navigator.pop(context);
-              ScaffoldMessenger.of(context).showSnackBar(
-                const SnackBar(content: Text('Butcher report resolved and archived.'), backgroundColor: AppColors.accentGreen),
-              );
-            },
-            style: ElevatedButton.styleFrom(backgroundColor: AppColors.accentGreen, foregroundColor: Colors.white),
-            child: const Text('Mark as Resolved'),
-          ),
-        ],
+        const SizedBox(height: 2),
+        Text(
+          'You haven\'t completed location check-in for today yet.',
+          style: TextStyle(fontSize: 11, color: theme.colorScheme.onSurfaceVariant),
+        ),
+      ],
+    );
+
+    final actionButton = ElevatedButton.icon(
+      onPressed: () => showDialog(
+        context: context,
+        barrierDismissible: true,
+        builder: (ctx) => AttendanceDialog(user: user, ref: ref),
       ),
+      icon: const Icon(Icons.location_on_rounded, size: 16),
+      label: const Text('Check In Now', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 12)),
+      style: ElevatedButton.styleFrom(
+        backgroundColor: Colors.purple,
+        foregroundColor: Colors.white,
+      ),
+    );
+
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+      decoration: BoxDecoration(
+        color: Colors.purple.shade50,
+        borderRadius: BorderRadius.circular(AppRadius.m),
+        border: Border.all(color: Colors.purple.shade200, width: 1.5),
+      ),
+      child: isMobile
+          ? Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Row(
+                  children: [
+                    Container(
+                      padding: const EdgeInsets.all(6),
+                      decoration: const BoxDecoration(color: Colors.purple, shape: BoxShape.circle),
+                      child: const Icon(Icons.how_to_reg_rounded, color: Colors.white, size: 16),
+                    ),
+                    const SizedBox(width: 8),
+                    Expanded(child: textContent),
+                  ],
+                ),
+                const SizedBox(height: 10),
+                SizedBox(
+                  width: double.infinity,
+                  child: actionButton,
+                ),
+              ],
+            )
+          : Row(
+              children: [
+                Container(
+                  padding: const EdgeInsets.all(8),
+                  decoration: const BoxDecoration(color: Colors.purple, shape: BoxShape.circle),
+                  child: const Icon(Icons.how_to_reg_rounded, color: Colors.white, size: 20),
+                ),
+                const SizedBox(width: 12),
+                Expanded(child: textContent),
+                const SizedBox(width: 12),
+                actionButton,
+              ],
+            ),
     );
   }
 
@@ -509,116 +618,188 @@ class _AdminDashboardState extends ConsumerState<AdminDashboard> {
     final isDark = theme.brightness == Brightness.dark;
     final isMobile = ResponsiveLayout.isMobile(context);
 
+    final indices = isMobile
+        ? [_cardIndex0, _cardIndex1]
+        : [_cardIndex0, _cardIndex1, _cardIndex2, _cardIndex3];
+
+    return SizedBox(
+      height: isMobile ? 155 : 185,
+      child: Row(
+        children: List.generate(indices.length, (i) {
+          final imgIndex = indices[i];
+          final imgPath = _bannerImages[imgIndex % _bannerImages.length];
+          final tip = _getTipForProductImage(imgPath);
+          return Expanded(
+            child: _buildBannerCard(context, i, indices.length, imgIndex, tip, isDark, isMobile, theme),
+          );
+        }),
+      ),
+    );
+  }
+
+  Widget _buildBannerCard(
+    BuildContext context, 
+    int i, 
+    int totalCards, 
+    int imgIndex, 
+    _SkincareTip tip, 
+    bool isDark, 
+    bool isMobile, 
+    ThemeData theme,
+  ) {
     return Container(
-      width: double.infinity,
-      height: isMobile ? 160 : 200, 
+      margin: EdgeInsets.only(
+        left: i == 0 ? 0 : AppSpacing.s,
+        right: i == totalCards - 1 ? 0 : AppSpacing.s,
+      ),
       decoration: BoxDecoration(
         borderRadius: BorderRadius.circular(AppRadius.l),
         boxShadow: [
           BoxShadow(
-            color: Colors.black.withValues(alpha: isDark ? 0.3 : 0.1),
-            blurRadius: 10,
+            color: Colors.black.withValues(alpha: isDark ? 0.3 : 0.08),
+            blurRadius: 8,
             offset: const Offset(0, 4),
           ),
         ],
       ),
       child: ClipRRect(
         borderRadius: BorderRadius.circular(AppRadius.l),
-        child: Stack(
-          children: [
-            // Image Carousel
-            PageView.builder(
-              controller: _pageController,
-              onPageChanged: (index) => setState(() => _currentPage = index),
-              itemCount: _bannerImages.length,
-              itemBuilder: (context, index) {
-                return Image.asset(
-                  _bannerImages[index],
+        child: Container(
+          color: isDark ? const Color(0xFF1E1E1E) : const Color(0xFFF3F4F6),
+          child: Stack(
+            fit: StackFit.expand,
+            children: [
+              AnimatedSwitcher(
+                duration: const Duration(milliseconds: 800),
+                child: Image.asset(
+                  _bannerImages[imgIndex],
+                  key: ValueKey<String>('bg_${_bannerImages[imgIndex]}'),
                   fit: BoxFit.cover,
                   width: double.infinity,
-                );
-              },
-            ),
-            
-            // Gradient Overlay
-            Container(
-              decoration: BoxDecoration(
-                gradient: LinearGradient(
-                  begin: Alignment.centerLeft,
-                  end: Alignment.centerRight,
-                  colors: [
-                    Colors.black.withValues(alpha: 0.8),
-                    Colors.black.withValues(alpha: 0.2),
-                    Colors.transparent,
-                  ],
+                  height: double.infinity,
+                  color: Colors.black.withValues(alpha: isDark ? 0.75 : 0.5),
+                  colorBlendMode: BlendMode.darken,
                 ),
               ),
-            ),
-            
-            // Text Content
-            Padding(
-              padding: EdgeInsets.all(isMobile ? AppSpacing.m : AppSpacing.xl),
-              child: Column(
-                mainAxisAlignment: MainAxisAlignment.center,
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Container(
-                    padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-                    decoration: BoxDecoration(
-                      color: theme.colorScheme.primary,
-                      borderRadius: BorderRadius.circular(4),
-                    ),
-                    child: Text(
-                      'PREMIUM SELECTION',
-                      style: TextStyle(color: Colors.white, fontSize: isMobile ? 8 : 10, fontWeight: FontWeight.bold),
+              Padding(
+                padding: const EdgeInsets.symmetric(vertical: 8.0, horizontal: 6.0),
+                child: AnimatedSwitcher(
+                  duration: const Duration(milliseconds: 800),
+                  child: Center(
+                    key: ValueKey<String>('fg_${_bannerImages[imgIndex]}'),
+                    child: Image.asset(
+                      _bannerImages[imgIndex],
+                      fit: BoxFit.contain,
+                      filterQuality: FilterQuality.high,
                     ),
                   ),
-                  const SizedBox(height: 8),
-                  Flexible(
-                    child: FittedBox(
-                      fit: BoxFit.scaleDown,
-                      child: Text(
-                        'Uncompromising Quality',
-                        style: TextStyle(
-                          color: Colors.white,
-                          fontSize: isMobile ? 22 : 28,
-                          fontWeight: FontWeight.bold,
-                          shadows: const [Shadow(color: Colors.black45, blurRadius: 10, offset: Offset(0, 2))],
+                ),
+              ),
+              Container(
+                decoration: BoxDecoration(
+                  gradient: LinearGradient(
+                    begin: Alignment.bottomCenter,
+                    end: Alignment.topCenter,
+                    colors: [
+                      Colors.black.withValues(alpha: 0.9),
+                      Colors.black.withValues(alpha: 0.4),
+                      Colors.transparent,
+                    ],
+                    stops: const [0.0, 0.6, 1.0],
+                  ),
+                ),
+              ),
+              Padding(
+                padding: const EdgeInsets.all(10.0),
+                child: AnimatedSwitcher(
+                  duration: const Duration(milliseconds: 600),
+                  child: Column(
+                    key: ValueKey<String>('tip_col_${tip.title}_$imgIndex'),
+                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Align(
+                        alignment: Alignment.topLeft,
+                        child: Container(
+                          padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 3),
+                          decoration: BoxDecoration(
+                            gradient: LinearGradient(
+                              colors: tip.badge.contains('HYGIENE')
+                                  ? [Colors.teal.shade600, Colors.green.shade700]
+                                  : tip.badge.contains('GLOW') || tip.badge.contains('BEAUTY')
+                                      ? [Colors.pink.shade500, Colors.purple.shade600]
+                                      : [theme.colorScheme.primary, Colors.indigo.shade600],
+                            ),
+                            borderRadius: BorderRadius.circular(6),
+                            boxShadow: const [
+                              BoxShadow(color: Colors.black26, blurRadius: 4, offset: Offset(0, 2)),
+                            ],
+                          ),
+                          child: Row(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              Icon(
+                                tip.badge.contains('HYGIENE')
+                                    ? Icons.clean_hands_rounded
+                                    : tip.badge.contains('GLOW') || tip.badge.contains('BEAUTY')
+                                        ? Icons.auto_awesome_rounded
+                                        : Icons.spa_rounded,
+                                color: Colors.white,
+                                size: isMobile ? 10 : 12,
+                              ),
+                              const SizedBox(width: 4),
+                              Text(
+                                tip.badge,
+                                style: TextStyle(
+                                  color: Colors.white,
+                                  fontSize: isMobile ? 8 : 9,
+                                  fontWeight: FontWeight.bold,
+                                  letterSpacing: 0.5,
+                                ),
+                              ),
+                            ],
+                          ),
                         ),
                       ),
-                    ),
+                      Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          Text(
+                            tip.title,
+                            style: TextStyle(
+                              color: Colors.white,
+                              fontSize: isMobile ? 12 : 13,
+                              fontWeight: FontWeight.bold,
+                              shadows: const [
+                                Shadow(color: Colors.black87, blurRadius: 6, offset: Offset(0, 1)),
+                              ],
+                            ),
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                          ),
+                          const SizedBox(height: 2),
+                          Text(
+                            tip.detail,
+                            style: TextStyle(
+                              color: Colors.white.withValues(alpha: 0.88),
+                              fontSize: isMobile ? 9 : 10,
+                              height: 1.2,
+                              shadows: const [
+                                Shadow(color: Colors.black87, blurRadius: 4, offset: Offset(0, 1)),
+                              ],
+                            ),
+                            maxLines: 2,
+                            overflow: TextOverflow.ellipsis,
+                          ),
+                        ],
+                      ),
+                    ],
                   ),
-                  Text(
-                    'Quality Beauty Products from City Cosmetics',
-                    style: TextStyle(
-                      color: Colors.white70,
-                      fontSize: isMobile ? 12 : 16,
-                      fontWeight: FontWeight.w500,
-                    ),
-                  ),
-                ],
+                ),
               ),
-            ),
-            
-            // Carousel Indicators
-            Positioned(
-              bottom: 16,
-              right: 24,
-              child: Row(
-                children: List.generate(_bannerImages.length, (index) {
-                  return Container(
-                    width: _currentPage == index ? 24 : 8,
-                    height: 8,
-                    margin: const EdgeInsets.only(left: 4),
-                    decoration: BoxDecoration(
-                      color: _currentPage == index ? theme.colorScheme.primary : Colors.white54,
-                      borderRadius: BorderRadius.circular(4),
-                    ),
-                  );
-                }),
-              ),
-            ),
-          ],
+            ],
+          ),
         ),
       ),
     );
@@ -686,9 +867,9 @@ class _AdminDashboardState extends ConsumerState<AdminDashboard> {
 
   Widget _buildBranchSelector(BuildContext context, WidgetRef ref, UserAccount user, Branch? branch) {
     final theme = Theme.of(context);
-    final isAllowedToSwitch = user.activeRoles.contains(UserRole.admin) || 
-                              user.activeRoles.contains(UserRole.superAdmin) || 
-                              user.enabledPermissions.contains('/admin/branch-switch');
+    final isAllowedToSwitch = user.activePrimaryRole == UserRole.superAdmin ||
+                              user.role == UserRole.superAdmin ||
+                              user.activeRoles.contains(UserRole.superAdmin);
 
     final String branchLabel = branch != null 
         ? '${branch.name} (${branch.location})' 
@@ -710,12 +891,16 @@ class _AdminDashboardState extends ConsumerState<AdminDashboard> {
           children: [
             Icon(Icons.store_rounded, size: 16, color: theme.colorScheme.primary),
             const SizedBox(width: 6),
-            Text(
-              branchLabel,
-              style: TextStyle(
-                color: theme.colorScheme.primary,
-                fontWeight: FontWeight.bold,
-                fontSize: 12,
+            Flexible(
+              child: Text(
+                branchLabel,
+                style: TextStyle(
+                  color: theme.colorScheme.primary,
+                  fontWeight: FontWeight.bold,
+                  fontSize: 12,
+                ),
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
               ),
             ),
             if (isAllowedToSwitch) ...[
@@ -753,11 +938,17 @@ class _AdminDashboardState extends ConsumerState<AdminDashboard> {
           children: [
             Icon(Icons.storefront_rounded, color: theme.colorScheme.primary),
             const SizedBox(width: 10),
-            const Text('Switch Active Branch'),
+            const Expanded(
+              child: Text(
+                'Switch Active Branch',
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+              ),
+            ),
           ],
         ),
         content: SizedBox(
-          width: 400,
+          width: 380,
           child: branchesAsync.when(
             data: (branches) {
               if (branches.isEmpty) {
@@ -769,12 +960,15 @@ class _AdminDashboardState extends ConsumerState<AdminDashboard> {
               return ListView.separated(
                 shrinkWrap: true,
                 itemCount: branches.length,
-                separatorBuilder: (_, __) => const Divider(height: 1),
+                separatorBuilder: (context, index) {
+                  return const Divider(height: 1);
+                },
                 itemBuilder: (context, index) {
                   final b = branches[index];
                   final isCurrent = b.code == user.branchCode;
 
                   return ListTile(
+                    contentPadding: const EdgeInsets.symmetric(horizontal: 4, vertical: 2),
                     leading: CircleAvatar(
                       backgroundColor: isCurrent ? theme.colorScheme.primary : Colors.grey.shade200,
                       child: Icon(
@@ -782,8 +976,17 @@ class _AdminDashboardState extends ConsumerState<AdminDashboard> {
                         color: isCurrent ? Colors.white : Colors.grey.shade700,
                       ),
                     ),
-                    title: Text(b.name, style: TextStyle(fontWeight: isCurrent ? FontWeight.bold : FontWeight.normal)),
-                    subtitle: Text('${b.location} • Code: ${b.code}'),
+                    title: Text(
+                      b.name, 
+                      style: TextStyle(fontWeight: isCurrent ? FontWeight.bold : FontWeight.normal),
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                    ),
+                    subtitle: Text(
+                      '${b.location} • Code: ${b.code}',
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                    ),
                     trailing: isCurrent 
                         ? const Icon(Icons.check_circle_rounded, color: Colors.green) 
                         : const Icon(Icons.arrow_forward_ios_rounded, size: 14),
@@ -888,131 +1091,224 @@ class _AdminDashboardState extends ConsumerState<AdminDashboard> {
   void _handleCloseDailySales(BuildContext context, WidgetRef ref, {double? amount, DateTime? targetDate, String? initialNote}) {
     final tillState = ref.read(tillProvider);
     final closureDate = targetDate ?? DateTime.now();
-    final closingAmount = amount ?? (targetDate != null ? (tillState.pendingByDay[targetDate] ?? tillState.currentBalance) : tillState.currentBalance);
+    final salesHistory = ref.read(saleHistoryProvider);
+    final breakdown = TillNotifier.getPaymentBreakdownForDate(closureDate, salesHistory);
+
+    final expectedPhysicalCash = breakdown.totalPhysicalCash;
+    final closingAmount = amount ?? expectedPhysicalCash;
     final amountController = TextEditingController(text: closingAmount.toStringAsFixed(2));
     final noteController = TextEditingController(text: initialNote);
 
-    final salesHistory = ref.read(saleHistoryProvider);
-    final breakdown = TillNotifier.getPaymentBreakdownForDate(closureDate, salesHistory);
     final debtCollectionsCash = TillNotifier.getDebtCollectionsForDate(closureDate, salesHistory, cashOnly: true);
     final debtCollectionsAll = TillNotifier.getDebtCollectionsForDate(closureDate, salesHistory, cashOnly: false);
     final double debtCollectionsCashTotal = debtCollectionsCash.fold(0.0, (sum, c) => sum + c.amountPaid);
     
     showDialog(
       context: context,
-      builder: (context) => AlertDialog(
-        title: Row(
-          children: [
-            const Icon(Icons.lock_clock, color: Colors.orange),
-            const SizedBox(width: 8),
-            const Expanded(child: Text('Daily Sales Closure', style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold))),
-          ],
-        ),
-        content: SingleChildScrollView(
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Text('Confirming cash taking for ${DateFormat('EEEE, MMM dd, yyyy').format(closureDate)}.', style: const TextStyle(fontSize: 12, color: Colors.blue, fontWeight: FontWeight.bold)),
-              const SizedBox(height: 12),
-              
-              _buildPaymentBreakdownCard(breakdown, closingAmount, context),
+      builder: (context) => StatefulBuilder(
+        builder: (context, setModalState) {
+          final countedCash = double.tryParse(amountController.text) ?? 0.0;
+          final variance = countedCash - expectedPhysicalCash;
 
-              _buildDebtCollectionsView(debtCollectionsAll, context),
-
-              if (debtCollectionsCashTotal > 0) ...[
-                const SizedBox(height: 10),
-                Container(
-                  padding: const EdgeInsets.all(8),
-                  decoration: BoxDecoration(
-                    color: Colors.amber.withValues(alpha: 0.15),
-                    borderRadius: BorderRadius.circular(8),
-                    border: Border.all(color: Colors.amber.shade700.withValues(alpha: 0.4)),
-                  ),
-                  child: Row(
-                    children: [
-                      Icon(Icons.info_outline, size: 16, color: Colors.amber.shade900),
-                      const SizedBox(width: 8),
-                      Expanded(
-                        child: Text(
-                          'Note: Physical Cash in shop (₵${breakdown.totalPhysicalCash.toStringAsFixed(2)}) includes ₵${debtCollectionsCashTotal.toStringAsFixed(2)} in cash debt repayments.',
-                          style: TextStyle(fontSize: 10, color: Colors.amber.shade900, fontWeight: FontWeight.w500),
-                        ),
-                      ),
-                    ],
+          return AlertDialog(
+            insetPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 16),
+            title: Row(
+              children: [
+                const Icon(Icons.lock_clock, color: Colors.orange),
+                const SizedBox(width: 8),
+                const Expanded(
+                  child: Text(
+                    'Daily Sales Closure & Reconciliation',
+                    style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
+                    overflow: TextOverflow.ellipsis,
+                    maxLines: 2,
                   ),
                 ),
               ],
+            ),
+            content: SingleChildScrollView(
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text('Confirming till cash taking for ${DateFormat('EEEE, MMM dd, yyyy').format(closureDate)}.', style: const TextStyle(fontSize: 12, color: Colors.blue, fontWeight: FontWeight.bold)),
+                  const SizedBox(height: 12),
+                  
+                  _buildPaymentBreakdownCard(breakdown, closingAmount, context),
 
-              const SizedBox(height: 16),
-              TextField(
-                controller: amountController,
-                keyboardType: TextInputType.number,
-                decoration: const InputDecoration(
-                  labelText: 'Closing Amount (GHS)',
-                  prefixText: '₵ ',
-                  border: OutlineInputBorder(),
-                ),
+                  _buildDebtCollectionsView(debtCollectionsAll, context),
+
+                  if (debtCollectionsCashTotal > 0) ...[
+                    const SizedBox(height: 10),
+                    Container(
+                      padding: const EdgeInsets.all(8),
+                      decoration: BoxDecoration(
+                        color: Colors.amber.withValues(alpha: 0.15),
+                        borderRadius: BorderRadius.circular(8),
+                        border: Border.all(color: Colors.amber.shade700.withValues(alpha: 0.4)),
+                      ),
+                      child: Row(
+                        children: [
+                          Icon(Icons.info_outline, size: 16, color: Colors.amber.shade900),
+                          const SizedBox(width: 8),
+                          Expanded(
+                            child: Text(
+                              'Note: Physical Cash in shop (₵${breakdown.totalPhysicalCash.toStringAsFixed(2)}) includes ₵${debtCollectionsCashTotal.toStringAsFixed(2)} in cash debt repayments.',
+                              style: TextStyle(fontSize: 10, color: Colors.amber.shade900, fontWeight: FontWeight.w500),
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ],
+
+                  const SizedBox(height: 16),
+                  TextField(
+                    controller: amountController,
+                    keyboardType: const TextInputType.numberWithOptions(decimal: true),
+                    onChanged: (_) => setModalState(() {}),
+                    decoration: const InputDecoration(
+                      labelText: 'Counted Physical Cash in Drawer (GHS)',
+                      prefixText: '₵ ',
+                      border: OutlineInputBorder(),
+                    ),
+                  ),
+                  const SizedBox(height: 8),
+
+                  // Live Cash Variance Badge
+                  if (variance.abs() < 0.01)
+                    Container(
+                      padding: const EdgeInsets.all(8),
+                      decoration: BoxDecoration(color: Colors.green.shade50, borderRadius: BorderRadius.circular(6), border: Border.all(color: Colors.green.shade300)),
+                      child: Row(
+                        children: [
+                          Icon(Icons.check_circle_rounded, color: Colors.green.shade800, size: 16),
+                          const SizedBox(width: 8),
+                          Expanded(
+                            child: Text(
+                              'PERFECT MATCH: Cash count matches expected till cash',
+                              style: TextStyle(fontSize: 11, fontWeight: FontWeight.bold, color: Colors.green.shade900),
+                              overflow: TextOverflow.ellipsis,
+                              maxLines: 2,
+                            ),
+                          ),
+                        ],
+                      ),
+                    )
+                  else if (variance < -0.01)
+                    Container(
+                      padding: const EdgeInsets.all(8),
+                      decoration: BoxDecoration(color: Colors.red.shade50, borderRadius: BorderRadius.circular(6), border: Border.all(color: Colors.red.shade300)),
+                      child: Row(
+                        children: [
+                          Icon(Icons.warning_amber_rounded, color: Colors.red.shade800, size: 16),
+                          const SizedBox(width: 8),
+                          Expanded(
+                            child: Text(
+                              'CASH SHORTAGE: -₵${(-variance).toStringAsFixed(2)} below expected till cash',
+                              style: TextStyle(fontSize: 11, fontWeight: FontWeight.bold, color: Colors.red.shade900),
+                              overflow: TextOverflow.ellipsis,
+                              maxLines: 2,
+                            ),
+                          ),
+                        ],
+                      ),
+                    )
+                  else
+                    Container(
+                      padding: const EdgeInsets.all(8),
+                      decoration: BoxDecoration(color: Colors.amber.shade50, borderRadius: BorderRadius.circular(6), border: Border.all(color: Colors.amber.shade300)),
+                      child: Row(
+                        children: [
+                          Icon(Icons.info_outline_rounded, color: Colors.amber.shade900, size: 16),
+                          const SizedBox(width: 8),
+                          Expanded(
+                            child: Text(
+                              'CASH OVERAGE: +₵${variance.toStringAsFixed(2)} above expected till cash',
+                              style: TextStyle(fontSize: 11, fontWeight: FontWeight.bold, color: Colors.amber.shade900),
+                              overflow: TextOverflow.ellipsis,
+                              maxLines: 2,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+
+                  const SizedBox(height: 12),
+                  TextField(
+                    controller: noteController,
+                    decoration: const InputDecoration(
+                      labelText: 'Closure Note (Optional)',
+                      border: OutlineInputBorder(),
+                    ),
+                  ),
+                ],
               ),
-              const SizedBox(height: 12),
-              TextField(
-                controller: noteController,
-                decoration: const InputDecoration(
-                  labelText: 'Closure Note (Optional)',
-                  border: OutlineInputBorder(),
-                ),
+            ),
+            actions: [
+              TextButton(onPressed: () => Navigator.pop(context), child: const Text('Cancel')),
+              ElevatedButton.icon(
+                onPressed: () async {
+                  final finalAmount = double.tryParse(amountController.text);
+                  if (finalAmount == null || finalAmount <= 0) {
+                    ScaffoldMessenger.of(context).showSnackBar(
+                      const SnackBar(content: Text('Please enter a valid amount')),
+                    );
+                    return;
+                  }
+
+                  String closureTitle = noteController.text.trim();
+                  if (closureTitle.isEmpty) {
+                    final double debtTotal = debtCollectionsCash.fold(0.0, (sum, c) => sum + c.amountPaid);
+                    final String debtNotePart = debtTotal > 0 
+                        ? ' (Includes Debt Collections: ₵${debtTotal.toStringAsFixed(2)})'
+                        : '';
+                    closureTitle = 'Daily Sales Closure for ${DateFormat('yyyy-MM-dd').format(closureDate)}$debtNotePart';
+                  }
+
+                  final expense = ExpenseRecord(
+                    id: UuidUtils.generate(),
+                    title: closureTitle,
+                    category: 'Daily Sales Closure',
+                    amount: finalAmount,
+                    date: closureDate,
+                  );
+                  
+                  final totalPending = tillState.pendingByDay.values.fold(0.0, (sum, val) => sum + val);
+
+                  await ref.read(expenseProvider.notifier).recordCEOWithdrawal(
+                    expense: expense,
+                    currentTillBalance: expectedPhysicalCash,
+                    totalRemainingAfter: totalPending - finalAmount,
+                  );
+
+                  // Print / Export Till Closure PDF Receipt
+                  await ReportService.generateDailyTillClosureReceipt(
+                    closureDate: closureDate,
+                    physicalCashSales: breakdown.physicalCashSales,
+                    physicalCashDebt: breakdown.physicalCashDebt,
+                    totalPhysicalCash: breakdown.totalPhysicalCash,
+                    momoTotal: breakdown.totalMomo,
+                    bankTotal: breakdown.totalBank,
+                    grossRevenue: breakdown.totalRevenue,
+                    closingAmount: finalAmount,
+                    note: closureTitle,
+                  );
+
+                  if (context.mounted) {
+                    Navigator.pop(context);
+                    ScaffoldMessenger.of(context).showSnackBar(
+                      const SnackBar(content: Text('Daily sales closed, Till Receipt Generated & Security SMS Sent')),
+                    );
+                  }
+                },
+                icon: const Icon(Icons.print_rounded, size: 16),
+                label: const Text('Confirm Closure & Print'),
+                style: ElevatedButton.styleFrom(backgroundColor: Colors.orange.shade800, foregroundColor: Colors.white),
               ),
             ],
-          ),
-        ),
-        actions: [
-          TextButton(onPressed: () => Navigator.pop(context), child: const Text('Cancel')),
-          ElevatedButton(
-            onPressed: () async {
-              final finalAmount = double.tryParse(amountController.text);
-              if (finalAmount == null || finalAmount <= 0) {
-                ScaffoldMessenger.of(context).showSnackBar(
-                  const SnackBar(content: Text('Please enter a valid amount')),
-                );
-                return;
-              }
-
-              String closureTitle = noteController.text.trim();
-              if (closureTitle.isEmpty) {
-                final double debtTotal = debtCollectionsCash.fold(0.0, (sum, c) => sum + c.amountPaid);
-                final String debtNotePart = debtTotal > 0 
-                    ? ' (Includes Debt Collections: ₵${debtTotal.toStringAsFixed(2)})'
-                    : '';
-                closureTitle = 'Daily Sales Closure for ${DateFormat('yyyy-MM-dd').format(closureDate)}$debtNotePart';
-              }
-
-              final expense = ExpenseRecord(
-                id: UuidUtils.generate(),
-                title: closureTitle,
-                category: 'Daily Sales Closure',
-                amount: finalAmount,
-                date: closureDate,
-              );
-              
-              final totalPending = tillState.pendingByDay.values.fold(0.0, (sum, val) => sum + val);
-
-              await ref.read(expenseProvider.notifier).recordCEOWithdrawal(
-                expense: expense,
-                currentTillBalance: closingAmount, // This is the 'day' balance we are closing
-                totalRemainingAfter: totalPending - finalAmount,
-              );
-
-              if (context.mounted) {
-                Navigator.pop(context);
-                ScaffoldMessenger.of(context).showSnackBar(
-                  const SnackBar(content: Text('Daily sales closed & Security SMS Sent')),
-                );
-              }
-            },
-            style: ElevatedButton.styleFrom(backgroundColor: Colors.orange.shade800, foregroundColor: Colors.white),
-            child: const Text('Confirm Closure'),
-          ),
-        ],
+          );
+        },
       ),
     );
   }
@@ -1032,16 +1328,22 @@ class _AdminDashboardState extends ConsumerState<AdminDashboard> {
           Row(
             mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: [
-              Row(
-                children: [
-                  const Icon(Icons.payments_rounded, size: 16, color: Colors.green),
-                  const SizedBox(width: 6),
-                  Text(
-                    'PHYSICAL CASH IN TILL:',
-                    style: TextStyle(fontSize: 11, fontWeight: FontWeight.bold, color: Colors.green.shade800),
-                  ),
-                ],
+              Expanded(
+                child: Row(
+                  children: [
+                    const Icon(Icons.payments_rounded, size: 16, color: Colors.green),
+                    const SizedBox(width: 6),
+                    Expanded(
+                      child: Text(
+                        'PHYSICAL CASH IN TILL:',
+                        style: TextStyle(fontSize: 11, fontWeight: FontWeight.bold, color: Colors.green.shade800),
+                        overflow: TextOverflow.ellipsis,
+                      ),
+                    ),
+                  ],
+                ),
               ),
+              const SizedBox(width: 4),
               Text(
                 '₵${breakdown.totalPhysicalCash.toStringAsFixed(2)}',
                 style: TextStyle(fontSize: 13, fontWeight: FontWeight.bold, color: Colors.green.shade900),
@@ -1053,8 +1355,22 @@ class _AdminDashboardState extends ConsumerState<AdminDashboard> {
             child: Row(
               mainAxisAlignment: MainAxisAlignment.spaceBetween,
               children: [
-                Text('Direct Cash: ₵${breakdown.physicalCashSales.toStringAsFixed(2)}', style: TextStyle(fontSize: 10, color: Colors.grey.shade700)),
-                Text('Cash Debt: ₵${breakdown.physicalCashDebt.toStringAsFixed(2)}', style: TextStyle(fontSize: 10, color: Colors.grey.shade700)),
+                Expanded(
+                  child: Text(
+                    'Direct Cash: ₵${breakdown.physicalCashSales.toStringAsFixed(2)}',
+                    style: TextStyle(fontSize: 10, color: Colors.grey.shade700),
+                    overflow: TextOverflow.ellipsis,
+                  ),
+                ),
+                const SizedBox(width: 4),
+                Expanded(
+                  child: Text(
+                    'Cash Debt: ₵${breakdown.physicalCashDebt.toStringAsFixed(2)}',
+                    textAlign: TextAlign.end,
+                    style: TextStyle(fontSize: 10, color: Colors.grey.shade700),
+                    overflow: TextOverflow.ellipsis,
+                  ),
+                ),
               ],
             ),
           ),
@@ -1062,16 +1378,22 @@ class _AdminDashboardState extends ConsumerState<AdminDashboard> {
           Row(
             mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: [
-              Row(
-                children: [
-                  const Icon(Icons.phone_android_rounded, size: 16, color: Colors.orange),
-                  const SizedBox(width: 6),
-                  Text(
-                    'MOBILE MONEY (MOMO):',
-                    style: TextStyle(fontSize: 11, fontWeight: FontWeight.bold, color: Colors.orange.shade800),
-                  ),
-                ],
+              Expanded(
+                child: Row(
+                  children: [
+                    const Icon(Icons.phone_android_rounded, size: 16, color: Colors.orange),
+                    const SizedBox(width: 6),
+                    Expanded(
+                      child: Text(
+                        'MOBILE MONEY (MOMO):',
+                        style: TextStyle(fontSize: 11, fontWeight: FontWeight.bold, color: Colors.orange.shade800),
+                        overflow: TextOverflow.ellipsis,
+                      ),
+                    ),
+                  ],
+                ),
               ),
+              const SizedBox(width: 4),
               Text(
                 '₵${breakdown.totalMomo.toStringAsFixed(2)}',
                 style: TextStyle(fontSize: 13, fontWeight: FontWeight.bold, color: Colors.orange.shade900),
@@ -1083,8 +1405,22 @@ class _AdminDashboardState extends ConsumerState<AdminDashboard> {
             child: Row(
               mainAxisAlignment: MainAxisAlignment.spaceBetween,
               children: [
-                Text('Direct MoMo: ₵${breakdown.momoSales.toStringAsFixed(2)}', style: TextStyle(fontSize: 10, color: Colors.grey.shade700)),
-                Text('MoMo Debt: ₵${breakdown.momoDebt.toStringAsFixed(2)}', style: TextStyle(fontSize: 10, color: Colors.grey.shade700)),
+                Expanded(
+                  child: Text(
+                    'Direct MoMo: ₵${breakdown.momoSales.toStringAsFixed(2)}',
+                    style: TextStyle(fontSize: 10, color: Colors.grey.shade700),
+                    overflow: TextOverflow.ellipsis,
+                  ),
+                ),
+                const SizedBox(width: 4),
+                Expanded(
+                  child: Text(
+                    'MoMo Debt: ₵${breakdown.momoDebt.toStringAsFixed(2)}',
+                    textAlign: TextAlign.end,
+                    style: TextStyle(fontSize: 10, color: Colors.grey.shade700),
+                    overflow: TextOverflow.ellipsis,
+                  ),
+                ),
               ],
             ),
           ),
@@ -1093,16 +1429,22 @@ class _AdminDashboardState extends ConsumerState<AdminDashboard> {
             Row(
               mainAxisAlignment: MainAxisAlignment.spaceBetween,
               children: [
-                Row(
-                  children: [
-                    const Icon(Icons.account_balance_rounded, size: 16, color: Colors.purple),
-                    const SizedBox(width: 6),
-                    Text(
-                      'BANK DEPOSITS:',
-                      style: TextStyle(fontSize: 11, fontWeight: FontWeight.bold, color: Colors.purple.shade800),
-                    ),
-                  ],
+                Expanded(
+                  child: Row(
+                    children: [
+                      const Icon(Icons.account_balance_rounded, size: 16, color: Colors.purple),
+                      const SizedBox(width: 6),
+                      Expanded(
+                        child: Text(
+                          'BANK DEPOSITS:',
+                          style: TextStyle(fontSize: 11, fontWeight: FontWeight.bold, color: Colors.purple.shade800),
+                          overflow: TextOverflow.ellipsis,
+                        ),
+                      ),
+                    ],
+                  ),
                 ),
+                const SizedBox(width: 4),
                 Text(
                   '₵${breakdown.totalBank.toStringAsFixed(2)}',
                   style: TextStyle(fontSize: 13, fontWeight: FontWeight.bold, color: Colors.purple.shade900),
@@ -1114,8 +1456,22 @@ class _AdminDashboardState extends ConsumerState<AdminDashboard> {
               child: Row(
                 mainAxisAlignment: MainAxisAlignment.spaceBetween,
                 children: [
-                  Text('Direct Bank: ₵${breakdown.bankSales.toStringAsFixed(2)}', style: TextStyle(fontSize: 10, color: Colors.grey.shade700)),
-                  Text('Bank Debt: ₵${breakdown.bankDebt.toStringAsFixed(2)}', style: TextStyle(fontSize: 10, color: Colors.grey.shade700)),
+                  Expanded(
+                    child: Text(
+                      'Direct Bank: ₵${breakdown.bankSales.toStringAsFixed(2)}',
+                      style: TextStyle(fontSize: 10, color: Colors.grey.shade700),
+                      overflow: TextOverflow.ellipsis,
+                    ),
+                  ),
+                  const SizedBox(width: 4),
+                  Expanded(
+                    child: Text(
+                      'Bank Debt: ₵${breakdown.bankDebt.toStringAsFixed(2)}',
+                      textAlign: TextAlign.end,
+                      style: TextStyle(fontSize: 10, color: Colors.grey.shade700),
+                      overflow: TextOverflow.ellipsis,
+                    ),
+                  ),
                 ],
               ),
             ),
@@ -1124,8 +1480,18 @@ class _AdminDashboardState extends ConsumerState<AdminDashboard> {
           Row(
             mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: [
-              const Text('TOTAL PERIOD REVENUE:', style: TextStyle(fontSize: 11, fontWeight: FontWeight.bold)),
-              Text('₵${breakdown.totalRevenue.toStringAsFixed(2)}', style: const TextStyle(fontSize: 12, fontWeight: FontWeight.bold)),
+              const Expanded(
+                child: Text(
+                  'TOTAL PERIOD REVENUE:',
+                  style: TextStyle(fontSize: 11, fontWeight: FontWeight.bold),
+                  overflow: TextOverflow.ellipsis,
+                ),
+              ),
+              const SizedBox(width: 4),
+              Text(
+                '₵${breakdown.totalRevenue.toStringAsFixed(2)}',
+                style: const TextStyle(fontSize: 12, fontWeight: FontWeight.bold),
+              ),
             ],
           ),
         ],
@@ -1150,30 +1516,41 @@ class _AdminDashboardState extends ConsumerState<AdminDashboard> {
           Row(
             mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: [
-              const Row(
-                children: [
-                  Icon(Icons.people_alt_rounded, size: 16, color: Colors.blue),
-                  SizedBox(width: 6),
-                  Text(
-                    'DEBT PAYMENTS IN THIS PERIOD',
-                    style: TextStyle(
-                      fontSize: 11,
-                      fontWeight: FontWeight.bold,
-                      color: Colors.blue,
-                      letterSpacing: 0.5,
+              Expanded(
+                child: Row(
+                  children: const [
+                    Icon(Icons.people_alt_rounded, size: 16, color: Colors.blue),
+                    SizedBox(width: 6),
+                    Expanded(
+                      child: Text(
+                        'DEBT PAYMENTS IN PERIOD',
+                        style: TextStyle(
+                          fontSize: 11,
+                          fontWeight: FontWeight.bold,
+                          color: Colors.blue,
+                          letterSpacing: 0.5,
+                        ),
+                        overflow: TextOverflow.ellipsis,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              const SizedBox(width: 4),
+              Flexible(
+                child: Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+                  decoration: BoxDecoration(
+                    color: Colors.blue.withValues(alpha: 0.15),
+                    borderRadius: BorderRadius.circular(12),
+                  ),
+                  child: FittedBox(
+                    fit: BoxFit.scaleDown,
+                    child: Text(
+                      '${debtCollections.length} paid • Total ₵${totalDebtPaid.toStringAsFixed(2)}',
+                      style: const TextStyle(fontSize: 10, fontWeight: FontWeight.bold, color: Colors.blue),
                     ),
                   ),
-                ],
-              ),
-              Container(
-                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
-                decoration: BoxDecoration(
-                  color: Colors.blue.withValues(alpha: 0.15),
-                  borderRadius: BorderRadius.circular(12),
-                ),
-                child: Text(
-                  '${debtCollections.length} paid • Total ₵${totalDebtPaid.toStringAsFixed(2)}',
-                  style: const TextStyle(fontSize: 10, fontWeight: FontWeight.bold, color: Colors.blue),
                 ),
               ),
             ],
@@ -1186,9 +1563,12 @@ class _AdminDashboardState extends ConsumerState<AdminDashboard> {
                 children: [
                   Icon(Icons.info_outline, size: 14, color: Colors.grey),
                   SizedBox(width: 6),
-                  Text(
-                    'No debt repayments recorded for this period.',
-                    style: TextStyle(fontSize: 11, color: Colors.grey, fontStyle: FontStyle.italic),
+                  Expanded(
+                    child: Text(
+                      'No debt repayments recorded for this period.',
+                      style: TextStyle(fontSize: 11, color: Colors.grey, fontStyle: FontStyle.italic),
+                      overflow: TextOverflow.ellipsis,
+                    ),
                   ),
                 ],
               ),
@@ -1236,6 +1616,7 @@ class _AdminDashboardState extends ConsumerState<AdminDashboard> {
                               ],
                             ),
                           ),
+                          const SizedBox(width: 4),
                           Text(
                             '₵${dc.amountPaid.toStringAsFixed(2)}',
                             style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold, color: Colors.green.shade800),
@@ -1246,10 +1627,14 @@ class _AdminDashboardState extends ConsumerState<AdminDashboard> {
                       Row(
                         mainAxisAlignment: MainAxisAlignment.spaceBetween,
                         children: [
-                          Text(
-                            'Phone: ${dc.customerPhone} • Ref: #$invoiceShort • ${DateFormat('HH:mm').format(dc.paymentTime)}',
-                            style: TextStyle(fontSize: 10, color: Colors.grey.shade600),
+                          Expanded(
+                            child: Text(
+                              'Phone: ${dc.customerPhone} • Ref: #$invoiceShort • ${DateFormat('HH:mm').format(dc.paymentTime)}',
+                              style: TextStyle(fontSize: 10, color: Colors.grey.shade600),
+                              overflow: TextOverflow.ellipsis,
+                            ),
                           ),
+                          const SizedBox(width: 4),
                           Container(
                             padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 1),
                             decoration: BoxDecoration(
@@ -1273,14 +1658,17 @@ class _AdminDashboardState extends ConsumerState<AdminDashboard> {
                             color: dc.isFullSettlement ? Colors.green.shade700 : Colors.orange.shade900,
                           ),
                           const SizedBox(width: 4),
-                          Text(
-                            dc.isFullSettlement
-                                ? 'Fully Cleared'
-                                : 'Partial Payment (Remaining Bal: ₵${dc.remainingBalance.toStringAsFixed(2)})',
-                            style: TextStyle(
-                              fontSize: 10,
-                              fontWeight: FontWeight.w600,
-                              color: dc.isFullSettlement ? Colors.green.shade800 : Colors.orange.shade900,
+                          Expanded(
+                            child: Text(
+                              dc.isFullSettlement
+                                  ? 'Fully Cleared'
+                                  : 'Partial Payment (Remaining Bal: ₵${dc.remainingBalance.toStringAsFixed(2)})',
+                              style: TextStyle(
+                                fontSize: 10,
+                                fontWeight: FontWeight.w600,
+                                color: dc.isFullSettlement ? Colors.green.shade800 : Colors.orange.shade900,
+                              ),
+                              overflow: TextOverflow.ellipsis,
                             ),
                           ),
                         ],
@@ -1304,11 +1692,11 @@ class _AdminDashboardState extends ConsumerState<AdminDashboard> {
       {'title': 'Daily Sales Report', 'desc': 'Detailed list of all transactions today', 'icon': Icons.point_of_sale, 'cat': 'Financial'},
       {'title': 'Monthly Revenue Summary', 'desc': 'Financial overview for the current month', 'icon': Icons.account_balance, 'cat': 'Financial'},
       {'title': 'Inventory Audit', 'desc': 'Stock levels and low-stock warnings', 'icon': Icons.inventory_2, 'cat': 'Stock'},
-      {'title': 'Slaughter & Yield Log', 'desc': 'Operational efficiency and carcass records', 'icon': Icons.precision_manufacturing, 'cat': 'Production'},
+      {'title': 'Warehouse Intake Log', 'desc': 'Supplier intake & stock receiving records', 'icon': Icons.move_to_inbox, 'cat': 'Logistics'},
       {'title': 'Staff Performance', 'desc': 'Individual sales and processing metrics', 'icon': Icons.badge, 'cat': 'Staff'},
       {'title': 'Customer Debt Statement', 'desc': 'Outstanding balances and payment history', 'icon': Icons.money_off, 'cat': 'Customers'},
       {'title': 'Business Expense Ledger', 'desc': 'Categorized operational costs', 'icon': Icons.receipt_long, 'cat': 'Financial'},
-      {'title': 'Meat Breakdown Analysis', 'desc': 'Detailed cuts and waste percentages', 'icon': Icons.restaurant, 'cat': 'Production'},
+      {'title': 'Stock Breakdown Analysis', 'desc': 'Detailed batch and stock distribution', 'icon': Icons.grid_view_rounded, 'cat': 'Logistics'},
       {'title': 'Operational Reports', 'desc': 'Combined view of workstation logs', 'icon': Icons.assignment, 'cat': 'General'},
       {'title': 'System Audit Log', 'desc': 'Record of administrative changes', 'icon': Icons.history_edu, 'cat': 'Security'},
     ];
@@ -1430,18 +1818,18 @@ class _AdminDashboardState extends ConsumerState<AdminDashboard> {
                                       } else if (r['title'] == 'Inventory Audit') {
                                         final products = ref.read(productsFutureProvider).value ?? [];
                                         await ReportService.generateInventoryAudit(products);
-                                      } else if (r['title'] == 'Slaughter & Yield Log') {
-                                        final logs = ref.read(slaughterLogsProvider).value ?? [];
-                                        await ReportService.generateSlaughterLogReport(logs);
+                                      } else if (r['title'] == 'Warehouse Intake Log') {
+                                        final intakes = ref.read(warehouseIntakeProvider).value ?? [];
+                                        await ReportService.generateWarehouseIntakeReport(intakes);
                                       } else if (r['title'] == 'Business Expense Ledger') {
                                         final expenses = ref.read(expenseProvider).records;
                                         await ReportService.generateExpenseLedger(expenses);
                                       } else if (r['title'] == 'Customer Debt Statement') {
                                         final sales = ref.read(saleHistoryProvider).where((s) => s.isActive).toList();
                                         await ReportService.generateCustomerDebtStatement(sales);
-                                      } else if (r['title'] == 'Meat Breakdown Analysis') {
-                                        final cuts = ref.read(recentCutsProvider).value ?? [];
-                                        await ReportService.generateMeatBreakdownAnalysis(cuts);
+                                      } else if (r['title'] == 'Stock Breakdown Analysis') {
+                                        final products = ref.read(productsFutureProvider).value ?? [];
+                                        await ReportService.generateWarehouseValuationReport(products);
                                       } else if (r['title'] == 'Staff Performance') {
                                         final sales = ref.read(saleHistoryProvider).where((s) => s.isActive).toList();
                                         final staff = ref.read(userProvider);
@@ -1495,15 +1883,35 @@ class _AdminDashboardState extends ConsumerState<AdminDashboard> {
       s.timestamp.year == now.year
     ).toList();
     
-    final logsAsync = ref.watch(slaughterLogsProvider);
-    final todayLogs = logsAsync.value?.where((l) {
-      final date = l.slaughterTime ?? now;
-      return date.day == now.day && date.month == now.month && date.year == now.year;
-    }).toList() ?? [];
-
     final totalRevenue = sales.fold(0.0, (sum, sale) => sum + sale.totalAmount);
     final totalCost = sales.fold(0.0, (sum, sale) => sum + sale.totalCost);
     final grossProfit = totalRevenue - totalCost;
+
+    // Top Category Calculation
+    final Map<String, double> categoryRevenue = {};
+    for (var sale in sales) {
+      for (var item in sale.items) {
+        final cat = item.product.category;
+        categoryRevenue[cat] = (categoryRevenue[cat] ?? 0.0) + item.total;
+      }
+    }
+
+    String topCategory = 'Skincare';
+    if (categoryRevenue.isNotEmpty) {
+      var sorted = categoryRevenue.entries.toList()..sort((a, b) => b.value.compareTo(a.value));
+      topCategory = sorted.first.key;
+    }
+
+    // Avg Basket Value & Today Checkouts Calculation
+    final double avgBasket = sales.isNotEmpty ? (totalRevenue / sales.length) : 0.0;
+    final todayCheckouts = sales.where((s) => 
+      s.timestamp.day == now.day && 
+      s.timestamp.month == now.month && 
+      s.timestamp.year == now.year
+    ).length;
+
+    final productsAsync = ref.watch(productsFutureProvider);
+    final lowStockCount = (productsAsync.value ?? []).where((p) => !p.isDeleted && p.needsDispatch).length;
     
     // Total Debt should reflect all-time outstanding balance, not just the current month
     final totalDebt = allSales.where((s) => s.isActive)
@@ -1551,9 +1959,25 @@ class _AdminDashboardState extends ConsumerState<AdminDashboard> {
           childAspectRatio: aspectRatio,
           children: [
             _kpiWithTrend(context, "Gross Sales", '₵${totalRevenue.toStringAsFixed(0)}', Icons.payments, Colors.blue, 'MONTH'),
-            _kpiWithTrend(context, "Gross Profit", '₵${grossProfit.toStringAsFixed(0)}', Icons.show_chart, Colors.teal, 'MARGIN'),
+            _kpiWithTrend(
+              context, 
+              "Gross Profit", 
+              '₵${grossProfit.toStringAsFixed(0)}', 
+              Icons.show_chart, 
+              grossProfit >= 0 ? Colors.teal : Colors.red, 
+              grossProfit >= 0 ? 'MARGIN' : 'LOSS',
+              onTap: () => _showProfitBreakdownDialog(context, totalRevenue, totalCost, grossProfit, totalExpenses, netProfit),
+            ),
             _kpiWithTrend(context, "Expenses", '₵${totalExpenses.toStringAsFixed(0)}', Icons.trending_down, Colors.red, 'MONTH'),
-            _kpiWithTrend(context, 'Net Profit', '₵${netProfit.toStringAsFixed(0)}', Icons.account_balance_wallet, Colors.green, 'MONTH'),
+            _kpiWithTrend(
+              context, 
+              'Net Profit', 
+              '₵${netProfit.toStringAsFixed(0)}', 
+              Icons.account_balance_wallet, 
+              netProfit >= 0 ? Colors.green : Colors.red, 
+              netProfit >= 0 ? 'MONTH' : 'LOSS',
+              onTap: () => _showProfitBreakdownDialog(context, totalRevenue, totalCost, grossProfit, totalExpenses, netProfit),
+            ),
           ],
         ),
         const SizedBox(height: AppSpacing.m),
@@ -1572,79 +1996,153 @@ class _AdminDashboardState extends ConsumerState<AdminDashboard> {
             ),
             _kpiWithTrend(context, 'Total Debt', '₵${totalDebt.toStringAsFixed(0)}', Icons.money_off, Colors.red, 'TOTAL'),
             _kpiWithTrend(context, 'Promo Impact', '₵${totalDiscounts.toStringAsFixed(0)}', Icons.auto_awesome, Colors.orange, 'SAVED'),
-            _kpiWithTrend(context, 'Daily Slaughter', '${todayLogs.length}', Icons.precision_manufacturing, Colors.green, 'TODAY'),
+            _kpiWithTrend(context, 'Top Category', topCategory, Icons.category_rounded, Colors.purple, '#1 REV'),
           ],
         ),
         const SizedBox(height: AppSpacing.m),
-        _kpiWithTrend(context, 'Stock Sold', '${totalWeightSold.toStringAsFixed(1)} kg', Icons.scale, theme.colorScheme.primary, 'LIVE'),
+        GridView.count(
+          crossAxisCount: isMobile ? 2 : 4,
+          shrinkWrap: true,
+          physics: const NeverScrollableScrollPhysics(),
+          crossAxisSpacing: AppSpacing.m,
+          mainAxisSpacing: AppSpacing.m,
+          childAspectRatio: isMobile ? 1.4 : 1.6,
+          children: [
+            _kpiWithTrend(context, 'Avg Spend / Sale', '₵${avgBasket.toStringAsFixed(0)}', Icons.shopping_bag_rounded, Colors.indigo, 'BASKET'),
+            _kpiWithTrend(context, 'Store Checkouts', '$todayCheckouts Sales', Icons.point_of_sale_rounded, Colors.blue.shade700, 'TODAY'),
+            _kpiWithTrend(context, 'Stock Sold', totalWeightSold % 1 == 0 ? '${totalWeightSold.toInt()} Pcs' : '${totalWeightSold.toStringAsFixed(1)} Pcs', Icons.inventory_2_outlined, theme.colorScheme.primary, 'LIVE'),
+            _kpiWithTrend(context, 'Low Stock Alerts', '$lowStockCount Items', Icons.warning_amber_rounded, lowStockCount > 0 ? Colors.red : Colors.green, 'REORDER'),
+          ],
+        ),
       ],
     );
   }
 
-  Widget _kpiWithTrend(BuildContext context, String title, String value, IconData icon, Color color, String trend) {
+  Widget _kpiWithTrend(BuildContext context, String title, String value, IconData icon, Color color, String trend, {VoidCallback? onTap}) {
     final theme = Theme.of(context);
     final isDark = theme.brightness == Brightness.dark;
     final isMobile = ResponsiveLayout.isMobile(context);
-    final bool isPositive = trend.startsWith('+') || trend == 'SAVED' || trend == 'LIVE';
+    final bool isPositive = trend.startsWith('+') || trend == 'SAVED' || trend == 'LIVE' || trend == 'MARGIN' || trend == 'MONTH' || (!value.startsWith('-') && !value.contains('-'));
 
-    return Container(
-      padding: EdgeInsets.all(isMobile ? 4 : AppSpacing.m),
-      decoration: BoxDecoration(
-        color: theme.cardTheme.color,
-        borderRadius: BorderRadius.circular(AppRadius.m),
-        boxShadow: [
-          if (!isDark) BoxShadow(color: Colors.black.withValues(alpha: 0.05), blurRadius: 10, offset: const Offset(0, 4)),
-        ],
-        border: isDark ? Border.all(color: theme.dividerColor) : null,
-      ),
-      child: Row(
-        children: [
-          Container(
-            padding: EdgeInsets.all(isMobile ? 4 : 10),
-            decoration: BoxDecoration(
-              color: color.withValues(alpha: 0.1), 
-              borderRadius: BorderRadius.circular(AppRadius.s)
+    return InkWell(
+      onTap: onTap,
+      borderRadius: BorderRadius.circular(AppRadius.m),
+      child: Container(
+        padding: EdgeInsets.all(isMobile ? 4 : AppSpacing.m),
+        decoration: BoxDecoration(
+          color: theme.cardTheme.color,
+          borderRadius: BorderRadius.circular(AppRadius.m),
+          boxShadow: [
+            if (!isDark) BoxShadow(color: Colors.black.withValues(alpha: 0.05), blurRadius: 10, offset: const Offset(0, 4)),
+          ],
+          border: isDark ? Border.all(color: theme.dividerColor) : null,
+        ),
+        child: Row(
+          children: [
+            Container(
+              padding: EdgeInsets.all(isMobile ? 4 : 10),
+              decoration: BoxDecoration(
+                color: color.withValues(alpha: 0.1), 
+                borderRadius: BorderRadius.circular(AppRadius.s)
+              ),
+              child: Icon(icon, color: color, size: isMobile ? 14 : 22),
             ),
-            child: Icon(icon, color: color, size: isMobile ? 14 : 22),
-          ),
-          SizedBox(width: isMobile ? 4 : AppSpacing.s),
-          Expanded(
-            child: Column(
-              mainAxisAlignment: MainAxisAlignment.center,
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(title, style: TextStyle(color: theme.colorScheme.onSurfaceVariant, fontSize: isMobile ? 8 : 10, fontWeight: FontWeight.w500), maxLines: 1, overflow: TextOverflow.ellipsis),
-                const SizedBox(height: 1),
-                FittedBox(
-                  fit: BoxFit.scaleDown,
-                  alignment: Alignment.centerLeft,
-                  child: Text(value, style: TextStyle(fontSize: isMobile ? 12 : 16, fontWeight: FontWeight.bold, color: theme.colorScheme.onSurface)),
-                ),
-                const SizedBox(height: 1),
-                FittedBox(
-                  fit: BoxFit.scaleDown,
-                  alignment: Alignment.centerLeft,
-                  child: Container(
-                    padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 1),
-                    decoration: BoxDecoration(
-                      color: isPositive ? Colors.green.withValues(alpha: 0.1) : Colors.red.withValues(alpha: 0.1),
-                      borderRadius: BorderRadius.circular(4),
-                    ),
-                    child: Text(
-                      trend,
-                      style: TextStyle(
-                        color: isPositive ? Colors.green : Colors.red,
-                        fontSize: isMobile ? 6 : 8,
-                        fontWeight: FontWeight.bold,
+            SizedBox(width: isMobile ? 4 : AppSpacing.s),
+            Expanded(
+              child: Column(
+                mainAxisAlignment: MainAxisAlignment.center,
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(title, style: TextStyle(color: theme.colorScheme.onSurfaceVariant, fontSize: isMobile ? 8 : 10, fontWeight: FontWeight.w500), maxLines: 1, overflow: TextOverflow.ellipsis),
+                  const SizedBox(height: 1),
+                  FittedBox(
+                    fit: BoxFit.scaleDown,
+                    alignment: Alignment.centerLeft,
+                    child: Text(value, style: TextStyle(fontSize: isMobile ? 12 : 16, fontWeight: FontWeight.bold, color: theme.colorScheme.onSurface)),
+                  ),
+                  const SizedBox(height: 1),
+                  FittedBox(
+                    fit: BoxFit.scaleDown,
+                    alignment: Alignment.centerLeft,
+                    child: Container(
+                      padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 1),
+                      decoration: BoxDecoration(
+                        color: isPositive ? Colors.green.withValues(alpha: 0.1) : Colors.red.withValues(alpha: 0.1),
+                        borderRadius: BorderRadius.circular(4),
+                      ),
+                      child: Text(
+                        trend,
+                        style: TextStyle(
+                          color: isPositive ? Colors.green : Colors.red,
+                          fontSize: isMobile ? 6 : 8,
+                          fontWeight: FontWeight.bold,
+                        ),
                       ),
                     ),
                   ),
-                ),
-              ],
+                ],
+              ),
             ),
-          ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  void _showProfitBreakdownDialog(BuildContext context, double sales, double cost, double gross, double expenses, double net) {
+    showDialog(
+      context: context,
+      builder: (context) => AlertDialog(
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(AppRadius.l)),
+        title: Row(
+          children: [
+            Icon(net >= 0 ? Icons.trending_up_rounded : Icons.trending_down_rounded, color: net >= 0 ? Colors.green : Colors.red),
+            const SizedBox(width: 10),
+            Text(net >= 0 ? 'Net Profit Breakdown' : 'Net Loss Breakdown'),
+          ],
+        ),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            _breakdownRow('1. Total Sales Revenue', '₵${sales.toStringAsFixed(2)}', Colors.blue),
+            const SizedBox(height: 6),
+            _breakdownRow('2. Cost of Goods Sold (COGS)', '-₵${cost.toStringAsFixed(2)}', Colors.orange.shade800),
+            const Divider(height: 16),
+            _breakdownRow('Gross Profit (1 - 2)', '₵${gross.toStringAsFixed(2)}', gross >= 0 ? Colors.teal : Colors.red, isBold: true),
+            const SizedBox(height: 6),
+            _breakdownRow('3. Operational Expenses', '-₵${expenses.toStringAsFixed(2)}', Colors.red),
+            const Divider(height: 20, thickness: 1.5),
+            _breakdownRow('NET PROFIT (Gross - Expenses)', '₵${net.toStringAsFixed(2)}', net >= 0 ? Colors.green : Colors.red, isBold: true, fontSize: 14),
+            const SizedBox(height: 12),
+            Container(
+              padding: const EdgeInsets.all(10),
+              decoration: BoxDecoration(
+                color: (net >= 0 ? Colors.green : Colors.red).withValues(alpha: 0.1),
+                borderRadius: BorderRadius.circular(8),
+              ),
+              child: Text(
+                net >= 0
+                    ? 'Your business generated positive net profit after deducting costs and operational expenses.'
+                    : 'Your recorded operational expenses (-₵${expenses.toStringAsFixed(2)}) or stock costs exceed your sales revenue for this period.',
+                style: TextStyle(fontSize: 11, color: net >= 0 ? Colors.green.shade900 : Colors.red.shade900),
+              ),
+            ),
+          ],
+        ),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(context), child: const Text('CLOSE')),
         ],
       ),
+    );
+  }
+
+  Widget _breakdownRow(String label, String value, Color color, {bool isBold = false, double fontSize = 12}) {
+    return Row(
+      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+      children: [
+        Expanded(child: Text(label, style: TextStyle(fontSize: fontSize, fontWeight: isBold ? FontWeight.bold : FontWeight.normal), overflow: TextOverflow.ellipsis)),
+        Text(value, style: TextStyle(fontSize: fontSize, fontWeight: FontWeight.bold, color: color)),
+      ],
     );
   }
 
@@ -1652,7 +2150,6 @@ class _AdminDashboardState extends ConsumerState<AdminDashboard> {
     final isDesktop = ResponsiveLayout.isDesktop(context);
     final allSales = ref.watch(saleHistoryProvider);
     final sales = allSales.where((s) => s.isActive).toList();
-    final logsAsync = ref.watch(slaughterLogsProvider);
     
     final promoSales = sales.where((s) => s.totalDiscount > 0).toList();
     final totalImpact = promoSales.fold(0.0, (sum, s) => sum + s.totalDiscount);
@@ -1667,11 +2164,9 @@ class _AdminDashboardState extends ConsumerState<AdminDashboard> {
               children: [
                 _buildPerformanceChart(context, sales),
                 const SizedBox(height: AppSpacing.l),
-                logsAsync.when(
-                  data: (logs) => _buildSlaughterTrendChart(context, logs),
-                  loading: () => const SizedBox(height: 200, child: Center(child: CircularProgressIndicator())),
-                  error: (e, _) => const Text('Error loading slaughter trend'),
-                ),
+                _buildStockLevelComparisonChart(context, ref),
+                const SizedBox(height: AppSpacing.l),
+                _buildCategorySalesChart(context, sales),
               ],
             )
           ),
@@ -1693,11 +2188,9 @@ class _AdminDashboardState extends ConsumerState<AdminDashboard> {
         children: [
           _buildPerformanceChart(context, sales),
           const SizedBox(height: AppSpacing.l),
-          logsAsync.when(
-            data: (logs) => _buildSlaughterTrendChart(context, logs),
-            loading: () => const SizedBox(height: 200, child: Center(child: CircularProgressIndicator())),
-            error: (e, _) => const Text('Error loading slaughter trend'),
-          ),
+          _buildStockLevelComparisonChart(context, ref),
+          const SizedBox(height: AppSpacing.l),
+          _buildCategorySalesChart(context, sales),
           const SizedBox(height: AppSpacing.l),
           _buildPromotionImpactCard(context, promoSales, totalImpact),
           const SizedBox(height: AppSpacing.l),
@@ -1707,27 +2200,280 @@ class _AdminDashboardState extends ConsumerState<AdminDashboard> {
     }
   }
 
-  Widget _buildSlaughterTrendChart(BuildContext context, List<dynamic> logs) {
+  Widget _buildStockLevelComparisonChart(BuildContext context, WidgetRef ref) {
     final theme = Theme.of(context);
     final isDark = theme.brightness == Brightness.dark;
-    
-    // Group logs by day for the last 7 days
-    final now = DateTime.now();
-    final last7Days = List.generate(7, (index) {
-      return now.subtract(Duration(days: 6 - index));
-    });
+    final productsAsync = ref.watch(productsFutureProvider);
+    final products = (productsAsync.value ?? []).where((p) => !p.isDeleted).toList();
 
-    final dailyCounts = last7Days.map((date) {
-      return logs.where((l) {
-        final logDate = l.slaughterTime ?? l.arrivalDate ?? DateTime.now();
-        return logDate.year == date.year && logDate.month == date.month && logDate.day == date.day;
-      }).length;
-    }).toList();
+    final Map<String, double> warehouseStockMap = {};
+    final Map<String, double> shopStockMap = {};
 
-    final maxCount = dailyCounts.isEmpty ? 10 : (dailyCounts.reduce((a, b) => a > b ? a : b) + 2);
+    for (final p in products) {
+      final cat = p.category.trim().isEmpty ? 'General' : p.category;
+      warehouseStockMap[cat] = (warehouseStockMap[cat] ?? 0.0) + p.warehouseQuantity;
+      shopStockMap[cat] = (shopStockMap[cat] ?? 0.0) + p.stockQuantity;
+    }
+
+    final categories = warehouseStockMap.keys.toList()
+      ..sort((a, b) {
+        final totalA = (warehouseStockMap[a] ?? 0) + (shopStockMap[a] ?? 0);
+        final totalB = (warehouseStockMap[b] ?? 0) + (shopStockMap[b] ?? 0);
+        return totalB.compareTo(totalA);
+      });
+
+    final displayCategories = categories.take(6).toList();
+
+    final totalWarehouse = products.fold(0.0, (sum, p) => sum + p.warehouseQuantity);
+    final totalShop = products.fold(0.0, (sum, p) => sum + p.stockQuantity);
+
+    final List<FlSpot> whsSpots = [];
+    final List<FlSpot> shopSpots = [];
+    double maxStock = 0;
+
+    for (int i = 0; i < displayCategories.length; i++) {
+      final cat = displayCategories[i];
+      final whsVal = warehouseStockMap[cat] ?? 0.0;
+      final shopVal = shopStockMap[cat] ?? 0.0;
+
+      whsSpots.add(FlSpot(i.toDouble(), whsVal));
+      shopSpots.add(FlSpot(i.toDouble(), shopVal));
+
+      if (whsVal > maxStock) maxStock = whsVal;
+      if (shopVal > maxStock) maxStock = shopVal;
+    }
+
+    final double chartMaxY = maxStock == 0 ? 100 : maxStock * 1.2;
+
+    final whsColor = theme.colorScheme.secondary;
+    final shopColor = theme.colorScheme.primary;
 
     return Container(
-      height: 350,
+      padding: const EdgeInsets.all(AppSpacing.l),
+      decoration: BoxDecoration(
+        color: theme.cardTheme.color,
+        borderRadius: BorderRadius.circular(AppRadius.m),
+        border: Border.all(color: theme.dividerColor.withValues(alpha: isDark ? 0.3 : 0.6)),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            children: [
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      'Stock Level Comparison',
+                      style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16, color: theme.colorScheme.onSurface),
+                    ),
+                    const SizedBox(height: 2),
+                    Text(
+                      'Warehouse vs Shop inventory across categories',
+                      style: TextStyle(fontSize: 11, color: theme.colorScheme.onSurfaceVariant),
+                    ),
+                  ],
+                ),
+              ),
+              const Icon(Icons.inventory_2_outlined, size: 18, color: Colors.grey),
+            ],
+          ),
+          const SizedBox(height: AppSpacing.m),
+
+          Wrap(
+            spacing: 16,
+            runSpacing: 8,
+            crossAxisAlignment: WrapCrossAlignment.center,
+            children: [
+              _legendDot(whsColor, 'Warehouse (${NumberFormat('#,###').format(totalWarehouse.toInt())} Pcs)', theme),
+              _legendDot(shopColor, 'Shop (${NumberFormat('#,###').format(totalShop.toInt())} Pcs)', theme),
+            ],
+          ),
+
+          const SizedBox(height: AppSpacing.l),
+
+          if (displayCategories.isEmpty)
+            const SizedBox(
+              height: 180,
+              child: Center(
+                child: Text('No inventory stock data available.', style: TextStyle(color: Colors.grey, fontSize: 12)),
+              ),
+            )
+          else
+            SizedBox(
+              height: 200,
+              child: LineChart(
+                LineChartData(
+                  gridData: FlGridData(
+                    show: true,
+                    drawVerticalLine: false,
+                    getDrawingHorizontalLine: (value) => FlLine(
+                      color: isDark ? Colors.white10 : Colors.black12,
+                      strokeWidth: 1,
+                      dashArray: [3, 3],
+                    ),
+                  ),
+                  lineTouchData: LineTouchData(
+                    touchTooltipData: LineTouchTooltipData(
+                      getTooltipColor: (spot) => isDark ? const Color(0xFF1E293B) : Colors.white,
+                      tooltipBorder: BorderSide(color: theme.dividerColor),
+                      getTooltipItems: (touchedSpots) {
+                        return touchedSpots.map((spot) {
+                          final isWarehouse = spot.barIndex == 0;
+                          final label = isWarehouse ? 'Warehouse' : 'Shop';
+                          final color = isWarehouse ? whsColor : shopColor;
+                          return LineTooltipItem(
+                            '$label: ${NumberFormat('#,###').format(spot.y.toInt())} Pcs',
+                            TextStyle(color: color, fontWeight: FontWeight.bold, fontSize: 11),
+                          );
+                        }).toList();
+                      },
+                    ),
+                  ),
+                  titlesData: FlTitlesData(
+                    leftTitles: AxisTitles(
+                      sideTitles: SideTitles(
+                        showTitles: true,
+                        reservedSize: 38,
+                        getTitlesWidget: (val, meta) {
+                          if (val == meta.max || val == meta.min) return const SizedBox.shrink();
+                          final formatted = val >= 1000 ? '${(val / 1000).toStringAsFixed(1)}k' : '${val.toInt()}';
+                          return Text(
+                            formatted,
+                            style: TextStyle(color: theme.colorScheme.onSurfaceVariant, fontSize: 10),
+                          );
+                        },
+                      ),
+                    ),
+                    rightTitles: const AxisTitles(sideTitles: SideTitles(showTitles: false)),
+                    topTitles: const AxisTitles(sideTitles: SideTitles(showTitles: false)),
+                    bottomTitles: AxisTitles(
+                      sideTitles: SideTitles(
+                        showTitles: true,
+                        reservedSize: 26,
+                        getTitlesWidget: (val, meta) {
+                          final idx = val.toInt();
+                          if (idx >= 0 && idx < displayCategories.length) {
+                            final cat = displayCategories[idx];
+                            final name = _formatCategoryLabel(cat);
+                            return Padding(
+                              padding: const EdgeInsets.only(top: 6),
+                              child: Text(
+                                name,
+                                style: TextStyle(
+                                  color: theme.colorScheme.onSurfaceVariant,
+                                  fontSize: 10,
+                                  fontWeight: FontWeight.w500,
+                                ),
+                              ),
+                            );
+                          }
+                          return const SizedBox.shrink();
+                        },
+                      ),
+                    ),
+                  ),
+                  borderData: FlBorderData(show: false),
+                  minY: 0,
+                  maxY: chartMaxY,
+                  lineBarsData: [
+                    LineChartBarData(
+                      spots: whsSpots,
+                      isCurved: true,
+                      curveSmoothness: 0.2,
+                      color: whsColor,
+                      barWidth: 2.5,
+                      isStrokeCapRound: true,
+                      dotData: FlDotData(
+                        show: true,
+                        getDotPainter: (spot, percent, barData, index) => FlDotCirclePainter(
+                          radius: 3.5,
+                          color: whsColor,
+                          strokeWidth: 1.5,
+                          strokeColor: Colors.white,
+                        ),
+                      ),
+                      belowBarData: BarAreaData(show: false),
+                    ),
+                    LineChartBarData(
+                      spots: shopSpots,
+                      isCurved: true,
+                      curveSmoothness: 0.2,
+                      color: shopColor,
+                      barWidth: 2.5,
+                      isStrokeCapRound: true,
+                      dotData: FlDotData(
+                        show: true,
+                        getDotPainter: (spot, percent, barData, index) => FlDotCirclePainter(
+                          radius: 3.5,
+                          color: shopColor,
+                          strokeWidth: 1.5,
+                          strokeColor: Colors.white,
+                        ),
+                      ),
+                      belowBarData: BarAreaData(show: false),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+        ],
+      ),
+    );
+  }
+
+  Widget _legendDot(Color color, String label, ThemeData theme) {
+    return Row(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        Container(
+          width: 8,
+          height: 8,
+          decoration: BoxDecoration(color: color, shape: BoxShape.circle),
+        ),
+        const SizedBox(width: 6),
+        Text(
+          label,
+          style: TextStyle(
+            fontSize: 11,
+            fontWeight: FontWeight.w500,
+            color: theme.colorScheme.onSurface,
+          ),
+        ),
+      ],
+    );
+  }
+
+  String _formatCategoryLabel(String raw) {
+    final clean = raw.trim();
+    if (clean.length <= 10) return clean;
+    final words = clean.split(' ');
+    if (words.length > 1) {
+      return words.first;
+    }
+    return '${clean.substring(0, 9)}…';
+  }
+
+  Widget _buildCategorySalesChart(BuildContext context, List<SaleRecord> sales) {
+    final theme = Theme.of(context);
+    final isDark = theme.brightness == Brightness.dark;
+
+    final Map<String, double> categoryMap = {};
+    for (final sale in sales) {
+      for (final item in sale.items) {
+        final cat = item.product.category;
+        categoryMap[cat] = (categoryMap[cat] ?? 0.0) + item.total;
+      }
+    }
+
+    final sortedEntries = categoryMap.entries.toList()
+      ..sort((a, b) => b.value.compareTo(a.value));
+
+    final maxVal = sortedEntries.isEmpty ? 1000.0 : (sortedEntries.first.value > 0 ? sortedEntries.first.value : 1000.0);
+
+    return Container(
       padding: const EdgeInsets.all(AppSpacing.l),
       decoration: BoxDecoration(
         color: theme.cardTheme.color,
@@ -1747,59 +2493,57 @@ class _AdminDashboardState extends ConsumerState<AdminDashboard> {
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    Text('Slaughter Trend', 
+                    Text('Beauty Category Sales Distribution', 
                       style: TextStyle(fontWeight: FontWeight.bold, fontSize: 18, color: theme.colorScheme.onSurface),
                       maxLines: 1, overflow: TextOverflow.ellipsis),
-                    Text('Animals processed daily', 
+                    Text('Revenue distribution across cosmetics categories', 
                       style: TextStyle(fontSize: 10, color: theme.colorScheme.onSurfaceVariant),
                       maxLines: 1, overflow: TextOverflow.ellipsis),
                   ],
                 ),
               ),
+              Icon(Icons.category_rounded, color: theme.colorScheme.primary, size: 20),
             ],
           ),
-          const SizedBox(height: AppSpacing.xl),
-          Expanded(
-            child: Row(
-              crossAxisAlignment: CrossAxisAlignment.end,
-              children: List.generate(dailyCounts.length, (index) {
-                final count = dailyCounts[index];
-                final date = last7Days[index];
-                final double barHeight = count == 0 ? 5 : (count / maxCount) * 180;
-                final isToday = index == 6;
-
-                return Expanded(
+          const SizedBox(height: AppSpacing.l),
+          if (sortedEntries.isEmpty)
+            const SizedBox(
+              height: 120,
+              child: Center(
+                child: Text('No category sales recorded yet.', style: TextStyle(color: Colors.grey, fontSize: 12)),
+              ),
+            )
+          else
+            Column(
+              children: sortedEntries.take(5).map((entry) {
+                final ratio = (entry.value / maxVal).clamp(0.05, 1.0);
+                return Padding(
+                  padding: const EdgeInsets.symmetric(vertical: 6.0),
                   child: Column(
-                    mainAxisAlignment: MainAxisAlignment.end,
+                    crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      FittedBox(
-                        child: Text(count > 0 ? '$count' : '', 
-                          style: TextStyle(fontSize: 10, fontWeight: FontWeight.bold, color: isToday ? Colors.orange : theme.colorScheme.onSurfaceVariant)),
+                      Row(
+                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                        children: [
+                          Text(entry.key, style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 12)),
+                          Text('₵${entry.value.toStringAsFixed(0)}', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 12, color: theme.colorScheme.primary)),
+                        ],
                       ),
                       const SizedBox(height: 4),
-                      Container(
-                        margin: const EdgeInsets.symmetric(horizontal: 4),
-                        height: barHeight,
-                        decoration: BoxDecoration(
-                          color: isToday ? Colors.orange : Colors.orange.withValues(alpha: 0.4),
-                          borderRadius: const BorderRadius.vertical(top: Radius.circular(4)),
-                        ),
-                      ),
-                      const SizedBox(height: 8),
-                      Text(
-                        DateFormat('E').format(date).substring(0, 1),
-                        style: TextStyle(
-                          fontSize: 10,
-                          fontWeight: isToday ? FontWeight.bold : FontWeight.normal,
-                          color: isToday ? Colors.orange : theme.colorScheme.onSurfaceVariant
+                      ClipRRect(
+                        borderRadius: BorderRadius.circular(4),
+                        child: LinearProgressIndicator(
+                          value: ratio,
+                          backgroundColor: theme.colorScheme.primary.withValues(alpha: 0.1),
+                          valueColor: AlwaysStoppedAnimation<Color>(theme.colorScheme.primary),
+                          minHeight: 8,
                         ),
                       ),
                     ],
                   ),
                 );
-              }),
+              }).toList(),
             ),
-          ),
         ],
       ),
     );
@@ -2024,12 +2768,10 @@ class _AdminDashboardState extends ConsumerState<AdminDashboard> {
     final isDark = theme.brightness == Brightness.dark;
     final productsAsync = ref.watch(productsFutureProvider);
     final sales = ref.watch(saleHistoryProvider);
-    final notifications = ref.watch(notificationProvider);
     
     // Calculate real alerts
     final lowStockItems = productsAsync.value?.where((p) => !p.isDeleted && p.stockQuantity < 10).toList() ?? [];
     final pendingCorrections = sales.where((s) => s.status == SaleStatus.pendingCorrection).toList();
-    final unreadButcherReports = notifications.where((n) => n.title.contains('BUTCHER') && !n.isRead).toList();
     
     final now = DateTime.now();
     final users = ref.watch(userProvider);
@@ -2065,12 +2807,12 @@ class _AdminDashboardState extends ConsumerState<AdminDashboard> {
                 child: Text('System Alerts', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 18, color: theme.colorScheme.onSurface), overflow: TextOverflow.ellipsis),
               ),
               const SizedBox(width: 8),
-              if (lowStockItems.length + pendingCorrections.length + unreadButcherReports.length + pendingSalaries.length > 0)
+              if (lowStockItems.length + pendingCorrections.length + pendingSalaries.length > 0)
                 Container(
                   padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
                   decoration: BoxDecoration(color: Colors.red, borderRadius: BorderRadius.circular(10)),
                   child: Text(
-                    '${lowStockItems.length + pendingCorrections.length + unreadButcherReports.length + pendingSalaries.length}',
+                    '${lowStockItems.length + pendingCorrections.length + pendingSalaries.length}',
                     style: const TextStyle(color: Colors.white, fontSize: 10, fontWeight: FontWeight.bold),
                   ),
                 ),
@@ -2078,7 +2820,7 @@ class _AdminDashboardState extends ConsumerState<AdminDashboard> {
           ),
           const SizedBox(height: AppSpacing.l),
           Expanded(
-            child: (lowStockItems.isEmpty && pendingCorrections.isEmpty && unreadButcherReports.isEmpty && pendingSalaries.isEmpty)
+            child: (lowStockItems.isEmpty && pendingCorrections.isEmpty && pendingSalaries.isEmpty)
                 ? Center(
                     child: Column(
                       mainAxisAlignment: MainAxisAlignment.center,
@@ -2106,13 +2848,6 @@ class _AdminDashboardState extends ConsumerState<AdminDashboard> {
                         'Invoice ${s.id} reported by ${s.cashierName}', 
                         Colors.orange, 
                         Icons.receipt_long
-                      )),
-                      ...unreadButcherReports.map((n) => _alertTile(
-                        context,
-                        'Warehouse Unit Report', 
-                        n.message, 
-                        Colors.red, 
-                        Icons.warning_amber
                       )),
                       ...lowStockItems.map((p) => _alertTile(
                         context,
@@ -2182,7 +2917,23 @@ class _AdminDashboardState extends ConsumerState<AdminDashboard> {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Text('Critical Stock Monitoring', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 18, color: theme.colorScheme.onSurface)),
+          Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            children: [
+              Expanded(
+                child: Text(
+                  'Critical Stock Monitoring', 
+                  style: TextStyle(fontWeight: FontWeight.bold, fontSize: 18, color: theme.colorScheme.onSurface),
+                  overflow: TextOverflow.ellipsis,
+                ),
+              ),
+              TextButton.icon(
+                onPressed: () => Navigator.pushNamed(context, '/warehouse'),
+                icon: const Icon(Icons.warehouse_rounded, size: 16),
+                label: const Text('Warehouse Hub', style: TextStyle(fontSize: 12)),
+              ),
+            ],
+          ),
           const SizedBox(height: AppSpacing.l),
           productsAsync.when(
             data: (products) {

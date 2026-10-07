@@ -93,7 +93,7 @@ class SalaryManagementScreen extends ConsumerWidget {
               userRole: user.activePrimaryRole.name.toUpperCase(),
               currentRoute: currentRoute,
               items: MenuService.getMenuItemsForUser(user),
-              onTap: (route) => MenuService.navigate(context, route, currentRoute),
+              onTap: (route) => MenuService.navigate(context, ref, route, currentRoute),
             ),
           ),
           body: Row(
@@ -105,7 +105,7 @@ class SalaryManagementScreen extends ConsumerWidget {
                   userRole: user.activePrimaryRole.name.toUpperCase(),
                   currentRoute: currentRoute,
                   items: MenuService.getMenuItemsForUser(user),
-                  onTap: (route) => MenuService.navigate(context, route, currentRoute),
+                  onTap: (route) => MenuService.navigate(context, ref, route, currentRoute),
                 ),
               Expanded(
                 child: SingleChildScrollView(

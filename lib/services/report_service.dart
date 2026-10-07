@@ -4,10 +4,12 @@ import 'package:printing/printing.dart';
 import 'package:intl/intl.dart';
 import '../models/sale_model.dart';
 import '../models/product.dart';
-import '../models/butcher_models.dart';
+import '../models/attendance_model.dart';
 import '../models/expense_model.dart';
 import '../models/user_model.dart';
 import '../models/system_models.dart';
+import '../models/warehouse_models.dart';
+import '../screens/admin/product_activity_report_screen.dart';
 
 class ReportService {
   static const _primaryMaroon = PdfColor.fromInt(0xFF6B1111);
@@ -129,35 +131,6 @@ class ReportService {
     await Printing.layoutPdf(onLayout: (format) async => doc.save(), name: 'Inventory_Audit_${DateFormat('yyyyMMdd').format(DateTime.now())}');
   }
 
-  static Future<void> generateSlaughterLogReport(List<SlaughterLog> logs) async {
-    final doc = pw.Document();
-    
-    doc.addPage(
-      pw.MultiPage(
-        pageFormat: PdfPageFormat.a4,
-        header: (context) => _buildHeader('Slaughter & Yield Log', DateTime.now()),
-        footer: (context) => _buildFooter(context),
-        build: (context) => [
-          pw.TableHelper.fromTextArray(
-            headerStyle: pw.TextStyle(fontWeight: pw.FontWeight.bold, color: PdfColors.white),
-            headerDecoration: const pw.BoxDecoration(color: _primaryMaroon),
-            headers: ['Date', 'Animal Type', 'Intake (kg)', 'Yield (kg)', 'Waste (kg)', 'Status'],
-            data: logs.map((l) => [
-              DateFormat('MMM dd').format(l.slaughterTime ?? DateTime.now()),
-              l.type.displayName,
-              l.liveWeight.toStringAsFixed(1),
-              l.meatWeight.toStringAsFixed(1),
-              (l.liveWeight - l.meatWeight).toStringAsFixed(1),
-              l.status.name.toUpperCase(),
-            ]).toList(),
-          ),
-        ],
-      ),
-    );
-
-    await Printing.layoutPdf(onLayout: (format) async => doc.save(), name: 'Slaughter_Log_${DateFormat('yyyyMMdd').format(DateTime.now())}');
-  }
-
   static Future<void> generateExpenseLedger(List<ExpenseRecord> expenses) async {
     final doc = pw.Document();
     final operationalExpenses = expenses.where((e) => e.isOperationalExpense).toList();
@@ -227,35 +200,6 @@ class ReportService {
     await Printing.layoutPdf(onLayout: (format) async => doc.save(), name: 'Debt_Statement');
   }
 
-  static Future<void> generateMeatBreakdownAnalysis(List<MeatCut> cuts) async {
-    final doc = pw.Document();
-    
-    doc.addPage(
-      pw.MultiPage(
-        pageFormat: PdfPageFormat.a4,
-        header: (context) => _buildHeader('Meat Breakdown & Cut Analysis', DateTime.now()),
-        footer: (context) => _buildFooter(context),
-        build: (context) => [
-          pw.Text('Detailed listing of all meat parts processed by the workstation.', style: pw.TextStyle(fontSize: 10)),
-          pw.SizedBox(height: 20),
-          pw.TableHelper.fromTextArray(
-            headerStyle: pw.TextStyle(fontWeight: pw.FontWeight.bold, color: PdfColors.white),
-            headerDecoration: const pw.BoxDecoration(color: _primaryMaroon),
-            headers: ['Processed Date', 'Batch ID', 'Cut/Part Name', 'Weight (kg)'],
-            data: cuts.map((c) => [
-              DateFormat('MMM dd, HH:mm').format(c.processedAt),
-              c.batchId.substring(c.batchId.length - 8).toUpperCase(),
-              c.name,
-              c.weight.toStringAsFixed(1),
-            ]).toList(),
-          ),
-        ],
-      ),
-    );
-
-    await Printing.layoutPdf(onLayout: (format) async => doc.save(), name: 'Breakdown_Analysis');
-  }
-
   static Future<void> generateStaffPerformanceReport(List<SaleRecord> sales, List<UserAccount> staff) async {
     final doc = pw.Document();
     
@@ -290,6 +234,52 @@ class ReportService {
     );
 
     await Printing.layoutPdf(onLayout: (format) async => doc.save(), name: 'Staff_Performance');
+  }
+
+  static Future<void> generateAttendanceReport(List<AttendanceRecord> records, String period) async {
+    final doc = pw.Document();
+
+    final onTimeCount = records.where((r) => r.status == 'on_time').length;
+    final lateCount = records.where((r) => r.status == 'late').length;
+    final autoCheckOutCount = records.where((r) => r.status == 'auto_checked_out').length;
+
+    doc.addPage(
+      pw.MultiPage(
+        pageFormat: PdfPageFormat.a4,
+        header: (context) => _buildHeader('Staff Attendance & Location Statement', DateTime.now()),
+        footer: (context) => _buildFooter(context),
+        build: (context) => [
+          _buildSummarySection({
+            'Reporting Period': period,
+            'Total Check-Ins': records.length.toString(),
+            'On-Time Rate': records.isNotEmpty ? '${((onTimeCount / records.length) * 100).toStringAsFixed(0)}%' : 'N/A',
+            'Late Check-Ins': '$lateCount',
+            'Auto Checked-Out': '$autoCheckOutCount',
+          }),
+          pw.SizedBox(height: 20),
+          pw.TableHelper.fromTextArray(
+            headerStyle: pw.TextStyle(fontWeight: pw.FontWeight.bold, color: PdfColors.white),
+            headerDecoration: const pw.BoxDecoration(color: _primaryMaroon),
+            headers: ['Date', 'Staff Name', 'Role', 'Check-In', 'Check-Out', 'Worked', 'Location', 'Status'],
+            data: records.map((r) => [
+              DateFormat('MMM dd, yyyy').format(r.date),
+              r.userName,
+              r.userRole,
+              DateFormat('hh:mm a').format(r.checkInTime),
+              r.checkOutTime != null ? DateFormat('hh:mm a').format(r.checkOutTime!) : 'Active',
+              r.formattedHoursWorked,
+              '${r.distanceMeters.toInt()}m (Verified)',
+              r.statusDisplay,
+            ]).toList(),
+          ),
+        ],
+      ),
+    );
+
+    await Printing.layoutPdf(
+      onLayout: (format) async => doc.save(),
+      name: 'Attendance_Report_${DateFormat('yyyyMMdd').format(DateTime.now())}',
+    );
   }
 
   static Future<void> generateTaxComplianceReport({
@@ -381,7 +371,7 @@ class ReportService {
     await Printing.layoutPdf(onLayout: (format) async => doc.save(), name: 'Tax_Compliance_${DateFormat('yyyyMM').format(date)}');
   }
 
-  static Future<void> generateHealthCertificate() async {
+  static Future<void> generateCosmeticsComplianceCertificate() async {
     final doc = pw.Document();
     doc.addPage(
       pw.Page(
@@ -389,22 +379,22 @@ class ReportService {
           child: pw.Container(
             padding: const pw.EdgeInsets.all(40),
             decoration: pw.BoxDecoration(
-              border: pw.Border.all(color: _primaryMaroon, width: 5),
+              border: pw.Border.all(color: _primaryMaroon, width: 4),
             ),
             child: pw.Column(
               mainAxisSize: pw.MainAxisSize.min,
               children: [
-                pw.Text('HEALTH INSPECTION CERTIFICATE', style: pw.TextStyle(fontSize: 24, fontWeight: pw.FontWeight.bold, color: _primaryMaroon)),
+                pw.Text('COSMETICS QUALITY & HYGIENE CERTIFICATE', style: pw.TextStyle(fontSize: 18, fontWeight: pw.FontWeight.bold, color: _primaryMaroon)),
                 pw.SizedBox(height: 20),
-                pw.Text('This is to certify that City Cosmetics POS has passed all health and hygiene standards for the year 2024.', textAlign: pw.TextAlign.center),
+                pw.Text('This is to certify that City Cosmetics POS workstation operations comply with all FDA guidelines, batch expiration safety protocols, and cosmetic storage hygiene standards.', textAlign: pw.TextAlign.center, style: const pw.TextStyle(fontSize: 11)),
                 pw.SizedBox(height: 40),
-                pw.Text('Status: VERIFIED', style: pw.TextStyle(fontWeight: pw.FontWeight.bold, color: PdfColors.green)),
+                pw.Text('STATUS: VERIFIED & CERTIFIED', style: pw.TextStyle(fontWeight: pw.FontWeight.bold, fontSize: 13, color: PdfColors.green)),
                 pw.SizedBox(height: 60),
                 pw.Row(
                   mainAxisAlignment: pw.MainAxisAlignment.spaceBetween,
                   children: [
-                    pw.Text('Date: Jan 01, 2024'),
-                    pw.Text('Signature: _________________'),
+                    pw.Text('Date: ${DateFormat('MMM dd, yyyy').format(DateTime.now())}', style: const pw.TextStyle(fontSize: 10)),
+                    pw.Text('Quality Manager Signature: _________________', style: const pw.TextStyle(fontSize: 10)),
                   ],
                 ),
               ],
@@ -413,26 +403,27 @@ class ReportService {
         ),
       ),
     );
-    await Printing.layoutPdf(onLayout: (format) async => doc.save(), name: 'Health_Certificate_2024');
+    await Printing.layoutPdf(onLayout: (format) async => doc.save(), name: 'Cosmetics_Quality_Certificate');
   }
 
-  static Future<void> generateSlaughterSOP() async {
+  static Future<void> generateInventorySOP() async {
     final doc = pw.Document();
     doc.addPage(
       pw.MultiPage(
-        header: (context) => _buildHeader('Standard Operating Procedure', DateTime.now()),
+        header: (context) => _buildHeader('Warehouse Inventory SOP v3.0', DateTime.now()),
+        footer: (context) => _buildFooter(context),
         build: (context) => [
-          pw.Header(level: 0, text: 'Standard Slaughter SOP v2.1'),
-          pw.Paragraph(text: '1. Arrival and Offloading: Ensure animals are rested for at least 12 hours.'),
-          pw.Paragraph(text: '2. Pre-Slaughter Inspection: Veterinary officer must verify animal health.'),
-          pw.Paragraph(text: '3. Stunning and Bleeding: Performed according to humane standards.'),
-          pw.Paragraph(text: '4. Dressing: Immediate removal of hide and viscera.'),
-          pw.Paragraph(text: '5. Post-Mortem: Secondary inspection of carcasses.'),
-          pw.Paragraph(text: '6. Storage: Cooling at 0-4°C within 1 hour.'),
+          pw.Header(level: 0, text: 'Standard Operating Procedure: Warehouse & Retail Stock Management'),
+          pw.SizedBox(height: 10),
+          pw.Paragraph(text: '1. Goods Receiving & Intake: All incoming shipments must be verified against supplier invoices, scanned via barcode, and recorded in Warehouse Intake.'),
+          pw.Paragraph(text: '2. Batch Expiry & FEFO Tracking: Expiry dates must be entered for all cosmetic batches. Stock dispatch follows strict FEFO (First Expired, First Out).'),
+          pw.Paragraph(text: '3. Store Replenishment & Dispatch: Low-stock shop alerts must trigger store dispatches from warehouse batches before shop inventory depletes.'),
+          pw.Paragraph(text: '4. Barcode Verification: All products entering or leaving the workstation must be scanned with USB/Bluetooth or camera barcode scanners.'),
+          pw.Paragraph(text: '5. Discrepancy & Waste Audits: Any damaged, broken, or expired cosmetics must be logged immediately under Waste Management for reconciliation.'),
         ],
       ),
     );
-    await Printing.layoutPdf(onLayout: (format) async => doc.save(), name: 'Slaughter_SOP_v2.1');
+    await Printing.layoutPdf(onLayout: (format) async => doc.save(), name: 'Inventory_SOP_v3.0');
   }
 
   static Future<void> generateTillLedgerReport(List<TillMovement> history) async {
@@ -468,6 +459,100 @@ class ReportService {
     await Printing.layoutPdf(onLayout: (format) async => doc.save(), name: 'Till_Ledger_${DateFormat('yyyyMMdd').format(DateTime.now())}');
   }
 
+  static Future<void> generateDailyTillClosureReceipt({
+    required DateTime closureDate,
+    required double physicalCashSales,
+    required double physicalCashDebt,
+    required double totalPhysicalCash,
+    required double momoTotal,
+    required double bankTotal,
+    required double grossRevenue,
+    required double closingAmount,
+    String? note,
+    String? closedBy,
+  }) async {
+    final doc = pw.Document();
+    final diff = closingAmount - totalPhysicalCash;
+    String varianceText = 'BALANCED (0.00)';
+    if (diff > 0.01) {
+      varianceText = 'OVER (+GHS ${diff.toStringAsFixed(2)})';
+    } else if (diff < -0.01) {
+      varianceText = 'SHORT (-GHS ${(-diff).toStringAsFixed(2)})';
+    }
+
+    doc.addPage(
+      pw.MultiPage(
+        pageFormat: PdfPageFormat.a4,
+        header: (context) => _buildHeader('Daily Sales Closure & Cash Reconciliation', closureDate),
+        footer: (context) => _buildFooter(context),
+        build: (context) => [
+          _buildSummarySection({
+            'Closure Date': DateFormat('EEEE, MMM dd, yyyy').format(closureDate),
+            'Physical Cash Counted': 'GHS ${closingAmount.toStringAsFixed(2)}',
+            'Expected Till Cash': 'GHS ${totalPhysicalCash.toStringAsFixed(2)}',
+            'Cash Variance': varianceText,
+          }),
+          pw.SizedBox(height: 20),
+          pw.Text('Payment Channel Breakdown', style: pw.TextStyle(fontWeight: pw.FontWeight.bold, fontSize: 13)),
+          pw.SizedBox(height: 8),
+          pw.TableHelper.fromTextArray(
+            headerStyle: pw.TextStyle(fontWeight: pw.FontWeight.bold, color: PdfColors.white),
+            headerDecoration: const pw.BoxDecoration(color: _primaryMaroon),
+            headers: ['Payment Channel', 'Direct Sales (GHS)', 'Debt Collections (GHS)', 'Total Revenue (GHS)'],
+            data: [
+              ['Physical Cash in Drawer', physicalCashSales.toStringAsFixed(2), physicalCashDebt.toStringAsFixed(2), totalPhysicalCash.toStringAsFixed(2)],
+              ['Mobile Money (MoMo)', (momoTotal - 0).toStringAsFixed(2), '0.00', momoTotal.toStringAsFixed(2)],
+              ['Bank Transfers / Deposits', (bankTotal - 0).toStringAsFixed(2), '0.00', bankTotal.toStringAsFixed(2)],
+              ['GROSS TOTAL REVENUE', '', '', grossRevenue.toStringAsFixed(2)],
+            ],
+          ),
+          pw.SizedBox(height: 25),
+          pw.Text('Cash Reconciliation & Verification', style: pw.TextStyle(fontWeight: pw.FontWeight.bold, fontSize: 13)),
+          pw.SizedBox(height: 8),
+          pw.TableHelper.fromTextArray(
+            headers: ['Metric', 'Amount (GHS)'],
+            data: [
+              ['Expected Physical Cash in Drawer', totalPhysicalCash.toStringAsFixed(2)],
+              ['Actual Physical Cash Counted', closingAmount.toStringAsFixed(2)],
+              ['Reconciliation Variance', varianceText],
+            ],
+          ),
+          if (note != null && note.isNotEmpty) ...[
+            pw.SizedBox(height: 15),
+            pw.Text('Closure Note / Remarks: $note', style: pw.TextStyle(fontSize: 10, fontStyle: pw.FontStyle.italic)),
+          ],
+          pw.SizedBox(height: 40),
+          pw.Row(
+            mainAxisAlignment: pw.MainAxisAlignment.spaceBetween,
+            children: [
+              pw.Column(
+                crossAxisAlignment: pw.CrossAxisAlignment.start,
+                children: [
+                  pw.Container(width: 150, height: 1, color: PdfColors.black),
+                  pw.SizedBox(height: 4),
+                  pw.Text('Cashier / Shift Supervisor Signature', style: const pw.TextStyle(fontSize: 9)),
+                ],
+              ),
+              pw.Column(
+                crossAxisAlignment: pw.CrossAxisAlignment.end,
+                children: [
+                  pw.Container(width: 150, height: 1, color: PdfColors.black),
+                  pw.SizedBox(height: 4),
+                  pw.Text('CEO / Manager Signature', style: const pw.TextStyle(fontSize: 9)),
+                ],
+              ),
+            ],
+          ),
+        ],
+      ),
+    );
+
+    await Printing.layoutPdf(
+      onLayout: (format) async => doc.save(),
+      name: 'Till_Closure_${DateFormat('yyyyMMdd').format(closureDate)}',
+    );
+  }
+
   static Future<void> generateProductActivityReport({
     required List<ProductActivityReportData> reportData,
     required DateTime startDate,
@@ -496,14 +581,14 @@ class ReportService {
     }
 
     String formatQtySummary(double kg, double units) {
-      if (kg > 0 && units > 0) {
-        return '${kg.toStringAsFixed(1)} kg (+ ${units.toStringAsFixed(1)} units)';
+      if (units > 0 && kg > 0) {
+        return '${units % 1 == 0 ? units.toInt() : units.toStringAsFixed(1)} units (+ ${kg.toStringAsFixed(1)} kg)';
+      } else if (units > 0) {
+        return '${units % 1 == 0 ? units.toInt() : units.toStringAsFixed(1)} units';
       } else if (kg > 0) {
         return '${kg.toStringAsFixed(1)} kg';
-      } else if (units > 0) {
-        return '${units.toStringAsFixed(1)} units';
       } else {
-        return '0.0 kg';
+        return '0 Pcs';
       }
     }
 
@@ -570,6 +655,297 @@ class ReportService {
     await Printing.layoutPdf(
       onLayout: (format) async => doc.save(),
       name: 'CEO_Product_Activity_Report_${DateFormat('yyyyMMdd').format(DateTime.now())}',
+    );
+  }
+
+  static Future<void> generateWarehouseLowStockReport(List<Product> products, {String? branchName}) async {
+    final doc = pw.Document();
+    final lowStockItems = products.where((p) => !p.isDeleted && (p.needsDispatch || p.warehouseQuantity < 10)).toList();
+
+    final totalShopLow = products.where((p) => !p.isDeleted && p.needsDispatch).length;
+    final totalWhsLow = products.where((p) => !p.isDeleted && p.warehouseQuantity < 10).length;
+
+    doc.addPage(
+      pw.MultiPage(
+        pageFormat: PdfPageFormat.a4,
+        header: (context) => _buildHeader('Warehouse Low Stock & Dispatch Priority Report', DateTime.now()),
+        footer: (context) => _buildFooter(context),
+        build: (context) => [
+          _buildSummarySection({
+            'Entity / Branch': branchName ?? 'Main HQ',
+            'Low Shop Stock Items': '$totalShopLow Products',
+            'Low Warehouse Items': '$totalWhsLow Products',
+            'Evaluated Items': '${lowStockItems.length}',
+          }),
+          pw.SizedBox(height: 15),
+          pw.Text('Items Requiring Store Dispatch or Supplier Intake',
+              style: pw.TextStyle(fontWeight: pw.FontWeight.bold, fontSize: 12)),
+          pw.SizedBox(height: 8),
+          pw.TableHelper.fromTextArray(
+            headerStyle: pw.TextStyle(fontWeight: pw.FontWeight.bold, color: PdfColors.white),
+            headerDecoration: const pw.BoxDecoration(color: _primaryMaroon),
+            headers: ['Product Name', 'Category', 'SKU / Barcode', 'Shop Stock', 'Warehouse Stock', 'Min Alert', 'Urgency / Status'],
+            data: lowStockItems.map((p) {
+              String status = 'IN STOCK';
+              if (p.needsDispatch && p.warehouseQuantity > 0) {
+                status = 'HIGH: DISPATCH NOW';
+              } else if (p.needsDispatch && p.warehouseQuantity <= 0) {
+                status = 'SUPPLIER INTAKE NEEDED';
+              } else if (p.warehouseQuantity < 10) {
+                status = 'LOW WHS STOCK';
+              }
+
+              return [
+                p.name,
+                p.category,
+                p.sku ?? p.id.substring(0, 8),
+                p.stockControlStoreDisplay,
+                p.stockControlWarehouseDisplay,
+                '${p.minStoreStock.toInt()} Pcs',
+                status,
+              ];
+            }).toList(),
+          ),
+        ],
+      ),
+    );
+
+    await Printing.layoutPdf(
+      onLayout: (format) async => doc.save(),
+      name: 'Warehouse_Low_Stock_${DateFormat('yyyyMMdd').format(DateTime.now())}',
+    );
+  }
+
+  static Future<void> generateWarehouseValuationReport(List<Product> products, {String? branchName}) async {
+    final doc = pw.Document();
+    final activeProducts = products.where((p) => !p.isDeleted).toList();
+
+    double totalWhsCost = 0.0;
+    double totalWhsRetail = 0.0;
+    double totalWhsPcs = 0.0;
+
+    for (final p in activeProducts) {
+      totalWhsCost += p.warehouseQuantity * p.costPrice;
+      totalWhsRetail += p.warehouseQuantity * p.retailPrice;
+      totalWhsPcs += p.warehouseQuantity;
+    }
+
+    doc.addPage(
+      pw.MultiPage(
+        pageFormat: PdfPageFormat.a4,
+        header: (context) => _buildHeader('Warehouse Inventory & Valuation Report', DateTime.now()),
+        footer: (context) => _buildFooter(context),
+        build: (context) => [
+          _buildSummarySection({
+            'Entity / Branch': branchName ?? 'Main HQ',
+            'Catalog Products': '${activeProducts.length}',
+            'Total WHS Stock': '${totalWhsPcs.toInt()} Pcs',
+            'Total Cost Valuation': 'GHS ${totalWhsCost.toStringAsFixed(2)}',
+            'Total Retail Value': 'GHS ${totalWhsRetail.toStringAsFixed(2)}',
+          }),
+          pw.SizedBox(height: 15),
+          pw.Text('Itemized Warehouse Stock Valuation Ledger',
+              style: pw.TextStyle(fontWeight: pw.FontWeight.bold, fontSize: 12)),
+          pw.SizedBox(height: 8),
+          pw.TableHelper.fromTextArray(
+            headerStyle: pw.TextStyle(fontWeight: pw.FontWeight.bold, color: PdfColors.white),
+            headerDecoration: const pw.BoxDecoration(color: _primaryMaroon),
+            headers: ['Product Name', 'Category', 'SKU', 'Warehouse Stock', 'Cost Price', 'Retail Price', 'Total Cost Value'],
+            data: activeProducts.map((p) => [
+              p.name,
+              p.category,
+              p.sku ?? p.id.substring(0, 8),
+              p.stockControlWarehouseDisplay,
+              'GHS ${p.costPrice.toStringAsFixed(2)}',
+              'GHS ${p.retailPrice.toStringAsFixed(2)}',
+              'GHS ${(p.warehouseQuantity * p.costPrice).toStringAsFixed(2)}',
+            ]).toList(),
+          ),
+        ],
+      ),
+    );
+
+    await Printing.layoutPdf(
+      onLayout: (format) async => doc.save(),
+      name: 'Warehouse_Valuation_${DateFormat('yyyyMMdd').format(DateTime.now())}',
+    );
+  }
+
+  static Future<void> generateWarehouseDispatchReport(List<WarehouseDispatchRecord> dispatches, {String? branchName}) async {
+    final doc = pw.Document();
+    double totalPcsDispatched = 0.0;
+    for (final d in dispatches) {
+      totalPcsDispatched += d.totalQuantity;
+    }
+
+    doc.addPage(
+      pw.MultiPage(
+        pageFormat: PdfPageFormat.a4,
+        header: (context) => _buildHeader('Warehouse Store Dispatch & Requisition Report', DateTime.now()),
+        footer: (context) => _buildFooter(context),
+        build: (context) => [
+          _buildSummarySection({
+            'Entity / Branch': branchName ?? 'Main HQ',
+            'Dispatch Records': '${dispatches.length}',
+            'Total Units Dispatched': '${totalPcsDispatched.toInt()} Pcs',
+          }),
+          pw.SizedBox(height: 15),
+          pw.Text('Store Replenishment Dispatch Log',
+              style: pw.TextStyle(fontWeight: pw.FontWeight.bold, fontSize: 12)),
+          pw.SizedBox(height: 8),
+          pw.TableHelper.fromTextArray(
+            headerStyle: pw.TextStyle(fontWeight: pw.FontWeight.bold, color: PdfColors.white),
+            headerDecoration: const pw.BoxDecoration(color: _primaryMaroon),
+            headers: ['Dispatch #', 'Date', 'Destination Store', 'Items Count', 'Total Qty', 'Dispatched By'],
+            data: dispatches.map((d) => [
+              d.dispatchNumber,
+              DateFormat('yyyy-MM-dd HH:mm').format(d.date),
+              d.destinationStore,
+              '${d.items.length} items',
+              '${d.totalQuantity.toInt()} Pcs',
+              d.dispatchedBy,
+            ]).toList(),
+          ),
+        ],
+      ),
+    );
+
+    await Printing.layoutPdf(
+      onLayout: (format) async => doc.save(),
+      name: 'Warehouse_Dispatches_${DateFormat('yyyyMMdd').format(DateTime.now())}',
+    );
+  }
+
+  static Future<void> generateWarehouseIntakeReport(List<WarehouseIntakeRecord> intakes, {String? branchName}) async {
+    final doc = pw.Document();
+    double totalPcsReceived = 0.0;
+    for (final i in intakes) {
+      totalPcsReceived += i.totalQuantity;
+    }
+
+    doc.addPage(
+      pw.MultiPage(
+        pageFormat: PdfPageFormat.a4,
+        header: (context) => _buildHeader('Warehouse Goods Receiving & Intake Log Report', DateTime.now()),
+        footer: (context) => _buildFooter(context),
+        build: (context) => [
+          _buildSummarySection({
+            'Entity / Branch': branchName ?? 'Main HQ',
+            'Intake Shipments': '${intakes.length}',
+            'Total Quantity Received': '${totalPcsReceived.toInt()} Pcs',
+          }),
+          pw.SizedBox(height: 15),
+          pw.Text('Shipment Goods Intake Ledger',
+              style: pw.TextStyle(fontWeight: pw.FontWeight.bold, fontSize: 12)),
+          pw.SizedBox(height: 8),
+          pw.TableHelper.fromTextArray(
+            headerStyle: pw.TextStyle(fontWeight: pw.FontWeight.bold, color: PdfColors.white),
+            headerDecoration: const pw.BoxDecoration(color: _primaryMaroon),
+            headers: ['Intake #', 'Date', 'Supplier / Source', 'Items Received', 'Total Quantity', 'Notes / Ref'],
+            data: intakes.map((i) => [
+              i.intakeNumber,
+              DateFormat('yyyy-MM-dd HH:mm').format(i.date),
+              i.supplierName,
+              '${i.items.length} items',
+              '${i.totalQuantity.toInt()} Pcs',
+              i.notes ?? 'N/A',
+            ]).toList(),
+          ),
+        ],
+      ),
+    );
+
+    await Printing.layoutPdf(
+      onLayout: (format) async => doc.save(),
+      name: 'Warehouse_Intakes_${DateFormat('yyyyMMdd').format(DateTime.now())}',
+    );
+  }
+
+  static Future<void> generateGoodsReceivedNote(WarehouseIntakeRecord intake, {String? branchName}) async {
+    final doc = pw.Document();
+    final double totalPcs = intake.totalQuantity;
+    final double totalBoxes = totalPcs / 120.0;
+
+    doc.addPage(
+      pw.MultiPage(
+        pageFormat: PdfPageFormat.a4,
+        header: (context) => _buildHeader('GOODS RECEIVED NOTE (GRN)', intake.date),
+        footer: (context) => _buildFooter(context),
+        build: (context) => [
+          _buildSummarySection({
+            'GRN Tracking #': intake.intakeNumber,
+            'Supplier / Importer': intake.supplierName,
+            'Arrival Date & Time': DateFormat('yyyy-MM-dd HH:mm').format(intake.date),
+            'Received By': intake.receivedBy ?? 'Warehouse Receiving Staff',
+            'Total Product Items': '${intake.items.length} Products',
+            'Total Stock Units': '${totalPcs.toInt()} Pcs (~${totalBoxes.toStringAsFixed(1)} Boxes)',
+          }),
+          pw.SizedBox(height: 15),
+          if (intake.notes != null && intake.notes!.isNotEmpty) ...[
+            pw.Container(
+              padding: const pw.EdgeInsets.all(8),
+              decoration: pw.BoxDecoration(
+                border: pw.Border.all(color: PdfColors.grey300),
+                borderRadius: const pw.BorderRadius.all(pw.Radius.circular(4)),
+              ),
+              child: pw.Text(
+                'Notes / Invoice Reference: ${intake.notes}',
+                style: pw.TextStyle(fontSize: 10, fontStyle: pw.FontStyle.italic),
+              ),
+            ),
+            pw.SizedBox(height: 15),
+          ],
+          pw.Text('Detailed Goods Intake Item Ledger', style: pw.TextStyle(fontWeight: pw.FontWeight.bold, fontSize: 12)),
+          pw.SizedBox(height: 8),
+          pw.TableHelper.fromTextArray(
+            headerStyle: pw.TextStyle(fontWeight: pw.FontWeight.bold, color: PdfColors.white),
+            headerDecoration: const pw.BoxDecoration(color: _primaryMaroon),
+            headers: ['#', 'SKU / Product Name', 'Category', 'Batch #', 'Qty Received', 'Warehouse Shelf', 'Expiry Date'],
+            data: intake.items.asMap().entries.map((entry) {
+              final idx = entry.key + 1;
+              final item = entry.value;
+              return [
+                '$idx',
+                '${item.productName}\n[SKU: ${item.sku}]',
+                item.category,
+                '#${item.batchNumber}',
+                '${item.quantityReceived.toInt()} Pcs',
+                item.warehouseLocation ?? 'Section A',
+                item.expiryDate != null ? DateFormat('yyyy-MM-dd').format(item.expiryDate!) : 'N/A',
+              ];
+            }).toList(),
+          ),
+          pw.SizedBox(height: 35),
+          pw.Row(
+            mainAxisAlignment: pw.MainAxisAlignment.spaceBetween,
+            children: [
+              pw.Column(
+                crossAxisAlignment: pw.CrossAxisAlignment.start,
+                children: [
+                  pw.Container(width: 200, height: 1, color: PdfColors.black),
+                  pw.SizedBox(height: 4),
+                  pw.Text('Supplier / Driver Signature', style: pw.TextStyle(fontSize: 10, fontWeight: pw.FontWeight.bold)),
+                  pw.Text('Name: ____________________', style: const pw.TextStyle(fontSize: 9, color: PdfColors.grey700)),
+                ],
+              ),
+              pw.Column(
+                crossAxisAlignment: pw.CrossAxisAlignment.start,
+                children: [
+                  pw.Container(width: 200, height: 1, color: PdfColors.black),
+                  pw.SizedBox(height: 4),
+                  pw.Text('Warehouse Receiving Manager', style: pw.TextStyle(fontSize: 10, fontWeight: pw.FontWeight.bold)),
+                  pw.Text('Signature & Official Stamp', style: const pw.TextStyle(fontSize: 9, color: PdfColors.grey700)),
+                ],
+              ),
+            ],
+          ),
+        ],
+      ),
+    );
+
+    await Printing.layoutPdf(
+      onLayout: (format) async => doc.save(),
+      name: 'GRN_${intake.intakeNumber}_${DateFormat('yyyyMMdd').format(intake.date)}',
     );
   }
 

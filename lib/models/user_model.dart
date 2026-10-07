@@ -1,4 +1,4 @@
-enum UserRole { superAdmin, admin, butcher, cashier }
+enum UserRole { superAdmin, admin, cashier }
 
 extension UserRoleExtension on UserRole {
   String get display => toString().split('.').last;
@@ -94,7 +94,6 @@ class UserAccount {
         final lower = name.toLowerCase();
         if (lower.contains('super')) return UserRole.superAdmin;
         if (lower.contains('admin')) return UserRole.admin;
-        if (lower.contains('butcher')) return UserRole.butcher;
         return UserRole.cashier;
       }
     }

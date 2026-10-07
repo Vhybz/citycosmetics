@@ -177,6 +177,49 @@ class CustomerNotifier extends StateNotifier<List<Customer>> {
     }
   }
 
+  Future<void> approveCustomer(String customerId, {double creditLimit = 0.0, String priceTier = 'wholesale'}) async {
+    try {
+      await _service.approveCustomer(customerId, creditLimit: creditLimit, priceTier: priceTier);
+      state = [
+        for (final c in state)
+          if (c.id == customerId)
+            c.copyWith(status: 'active', creditLimit: creditLimit, priceTier: priceTier)
+          else
+            c
+      ];
+      _saveToCache(state);
+
+      final match = state.where((x) => x.id == customerId).firstOrNull;
+      if (match != null && match.phone.isNotEmpty) {
+        final branch = ref.read(currentBranchProvider);
+        SmsService.sendCustomSms(
+          match.phone,
+          'Dear ${match.name}, your ${branch?.name ?? "City Cosmetics"} B2B Ordering account has been ACTIVATED! Log in with your passcode to start ordering.',
+        );
+      }
+    } catch (e) {
+      debugPrint('Error approving customer in notifier: $e');
+      rethrow;
+    }
+  }
+
+  Future<void> rejectCustomer(String customerId) async {
+    try {
+      await _service.rejectCustomer(customerId);
+      state = [
+        for (final c in state)
+          if (c.id == customerId)
+            c.copyWith(status: 'suspended')
+          else
+            c
+      ];
+      _saveToCache(state);
+    } catch (e) {
+      debugPrint('Error rejecting customer in notifier: $e');
+      rethrow;
+    }
+  }
+
   Future<void> deleteCustomer(String id) async {
     try {
       final connectivity = await Connectivity().checkConnectivity();

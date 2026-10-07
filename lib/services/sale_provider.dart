@@ -133,7 +133,7 @@ class SaleHistoryNotifier extends StateNotifier<List<SaleRecord>> {
         if (!item.product.isUnlimited) {
           await ref.read(productsFutureProvider.notifier).updateStock(
             item.product.id, 
-            -item.quantity, 
+            -item.quantityInPieces, 
             reason: 'SALE', 
             referenceId: saleWithBranch.id,
           );
@@ -178,7 +178,7 @@ class SaleHistoryNotifier extends StateNotifier<List<SaleRecord>> {
         if (!item.product.isUnlimited) {
           await ref.read(productsFutureProvider.notifier).updateStock(
             item.product.id, 
-            -item.quantity, 
+            -item.quantityInPieces, 
             reason: 'SALE', 
             referenceId: sale.id,
           );
@@ -201,10 +201,8 @@ class SaleHistoryNotifier extends StateNotifier<List<SaleRecord>> {
         
         final oldItem = oldSale.items.where((i) => i.product.id == newItem.product.id).firstOrNull;
         if (oldItem != null) {
-          final diff = oldItem.quantity - newItem.quantity;
+          final diff = oldItem.quantityInPieces - newItem.quantityInPieces;
           if (diff != 0) {
-             // If old > new, diff is positive (e.g. 10 - 8 = 2), so we add 2 back to stock.
-             // If old < new, diff is negative (e.g. 5 - 7 = -2), so we subtract 2 from stock.
              await ref.read(productsFutureProvider.notifier).updateStock(
                newItem.product.id, 
                diff, 
@@ -216,7 +214,7 @@ class SaleHistoryNotifier extends StateNotifier<List<SaleRecord>> {
           // New product added to existing receipt: subtract full quantity
           await ref.read(productsFutureProvider.notifier).updateStock(
             newItem.product.id, 
-            -newItem.quantity, 
+            -newItem.quantityInPieces, 
             reason: 'SALE_RECTIFIED', 
             referenceId: updatedSale.id,
           );
@@ -230,7 +228,7 @@ class SaleHistoryNotifier extends StateNotifier<List<SaleRecord>> {
         if (!stillExists) {
            await ref.read(productsFutureProvider.notifier).updateStock(
              oldItem.product.id, 
-             oldItem.quantity, 
+             oldItem.quantityInPieces, 
              reason: 'SALE_RECTIFIED', 
              referenceId: updatedSale.id,
            );
@@ -308,7 +306,7 @@ class SaleHistoryNotifier extends StateNotifier<List<SaleRecord>> {
           // Add back the quantity sold
           await ref.read(productsFutureProvider.notifier).updateStock(
             item.product.id, 
-            item.quantity, 
+            item.quantityInPieces, 
             reason: 'SALE_REVERSED', 
             referenceId: saleId,
           );

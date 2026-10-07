@@ -85,7 +85,18 @@ CREATE TABLE IF NOT EXISTS public.products (
   image_url TEXT,
   category TEXT NOT NULL,
   stock_quantity DECIMAL(10,2) DEFAULT 0,
-  unit TEXT DEFAULT 'kg',
+  warehouse_quantity DECIMAL(10,2) DEFAULT 0,
+  min_store_stock DECIMAL(10,2) DEFAULT 5.0,
+  sku TEXT,
+  brand TEXT,
+  size TEXT DEFAULT 'Standard',
+  warehouse_location TEXT,
+  unit TEXT DEFAULT 'pcs',
+  has_packs BOOLEAN DEFAULT true,
+  has_boxes BOOLEAN DEFAULT true,
+  pcs_per_pack DECIMAL(10,2) DEFAULT 12.0,
+  packs_per_box DECIMAL(10,2) DEFAULT 10.0,
+  pcs_per_box DECIMAL(10,2) DEFAULT 120.0,
   discount_percentage DECIMAL(10,2) DEFAULT 0,
   promo_start TIMESTAMPTZ,
   promo_end TIMESTAMPTZ,
@@ -98,6 +109,20 @@ CREATE TABLE IF NOT EXISTS public.products (
   is_unlimited BOOLEAN DEFAULT false,
   last_stock_update TIMESTAMPTZ
 );
+
+-- Ensure size column exists on existing deployments
+ALTER TABLE public.products ADD COLUMN IF NOT EXISTS size TEXT DEFAULT 'Standard';
+
+-- PRODUCT BARCODES (Alternative Barcodes / Alias Mapping)
+CREATE TABLE IF NOT EXISTS public.product_barcodes (
+  id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+  product_id UUID NOT NULL REFERENCES public.products(id) ON DELETE CASCADE,
+  barcode TEXT NOT NULL UNIQUE,
+  created_at TIMESTAMPTZ DEFAULT now() NOT NULL
+);
+
+CREATE INDEX IF NOT EXISTS idx_product_barcodes_barcode ON public.product_barcodes(barcode);
+CREATE INDEX IF NOT EXISTS idx_product_barcodes_product_id ON public.product_barcodes(product_id);
 
 -- SALES (Transactions)
 CREATE TABLE IF NOT EXISTS public.sales (
@@ -344,6 +369,25 @@ CREATE TABLE IF NOT EXISTS public.notifications (
   created_at TIMESTAMPTZ DEFAULT now() NOT NULL
 );
 
+-- ATTENDANCE & LOCATION AUDIT
+CREATE TABLE IF NOT EXISTS public.attendance_records (
+  id TEXT PRIMARY KEY,
+  user_id UUID REFERENCES public.users(id) ON DELETE CASCADE,
+  user_name TEXT NOT NULL,
+  user_role TEXT NOT NULL,
+  branch_code TEXT REFERENCES public.branches(code),
+  date DATE NOT NULL,
+  check_in_time TIMESTAMPTZ NOT NULL,
+  check_out_time TIMESTAMPTZ,
+  check_in_lat DOUBLE PRECISION,
+  check_in_lon DOUBLE PRECISION,
+  distance_meters DOUBLE PRECISION DEFAULT 0.0,
+  status TEXT DEFAULT 'on_time',
+  is_verified_location BOOLEAN DEFAULT true,
+  notes TEXT,
+  created_at TIMESTAMPTZ DEFAULT now() NOT NULL
+);
+
 -- DOCUMENTS
 CREATE TABLE IF NOT EXISTS public.documentss (
   id TEXT PRIMARY KEY,
@@ -366,6 +410,7 @@ CREATE INDEX IF NOT EXISTS idx_stock_transfers_branch ON public.stock_transfers(
 CREATE INDEX IF NOT EXISTS idx_customers_phone ON public.customers(phone);
 CREATE INDEX IF NOT EXISTS idx_stock_history_product ON public.stock_history(product_id);
 CREATE INDEX IF NOT EXISTS idx_audit_logs_timestamp ON public.audit_logs(timestamp DESC);
+CREATE INDEX IF NOT EXISTS idx_attendance_user_date ON public.attendance_records(user_id, date DESC);
 
 -- =====================================================
 -- 8. SECURITY & PERMISSIONS
@@ -375,6 +420,7 @@ CREATE INDEX IF NOT EXISTS idx_audit_logs_timestamp ON public.audit_logs(timesta
 ALTER TABLE public.branches DISABLE ROW LEVEL SECURITY;
 ALTER TABLE public.users DISABLE ROW LEVEL SECURITY;
 ALTER TABLE public.products DISABLE ROW LEVEL SECURITY;
+ALTER TABLE public.product_barcodes DISABLE ROW LEVEL SECURITY;
 ALTER TABLE public.sales DISABLE ROW LEVEL SECURITY;
 ALTER TABLE public.stock_transfers DISABLE ROW LEVEL SECURITY;
 ALTER TABLE public.expenses DISABLE ROW LEVEL SECURITY;
@@ -391,6 +437,7 @@ ALTER TABLE public.customer_payments DISABLE ROW LEVEL SECURITY;
 ALTER TABLE public.stock_history DISABLE ROW LEVEL SECURITY;
 ALTER TABLE public.documentss DISABLE ROW LEVEL SECURITY;
 ALTER TABLE public.staff_payments_audit DISABLE ROW LEVEL SECURITY;
+ALTER TABLE public.attendance_records DISABLE ROW LEVEL SECURITY;
 
 -- Grant permissions to standard API roles
 GRANT ALL ON ALL TABLES IN SCHEMA public TO anon, authenticated, service_role;
@@ -411,6 +458,7 @@ BEGIN
       public.stock_transfers,
       public.notifications,
       public.products,
+      public.product_barcodes,
       public.meat_batches,
       public.slaughter_logs,
       public.sales,
@@ -442,6 +490,24 @@ END;
 $$ LANGUAGE plpgsql;
 
 GRANT ALL ON FUNCTION public.increment_stock TO anon, authenticated, service_role;
+
+-- Barcode lookup function (Checks primary SKU or alternative barcodes)
+CREATE OR REPLACE FUNCTION public.find_product_by_barcode(scanned_code TEXT)
+RETURNS SETOF public.products
+LANGUAGE sql
+SECURITY DEFINER
+AS $$
+    SELECT p.*
+    FROM public.products p
+    WHERE p.sku = scanned_code AND (p.is_deleted = false OR p.is_deleted IS NULL)
+    UNION
+    SELECT p.*
+    FROM public.products p
+    JOIN public.product_barcodes pb ON p.id = pb.product_id
+    WHERE pb.barcode = scanned_code AND (p.is_deleted = false OR p.is_deleted IS NULL);
+$$;
+
+GRANT ALL ON FUNCTION public.find_product_by_barcode TO anon, authenticated, service_role;
 
 -- =====================================================
 -- 11. FINAL SCHEMA RELOAD

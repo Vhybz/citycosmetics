@@ -31,11 +31,18 @@ class SupabaseSaleService {
   }
 
   Stream<List<SaleRecord>> getSalesStream(String branchCode) {
-    return _client
-        .from('sales')
-        .stream(primaryKey: ['id'])
-        .eq('branch_code', branchCode)
-        .order('timestamp', ascending: false)
-        .map((data) => data.map((json) => SaleRecord.fromJson(json)).toList());
+    try {
+      return _client
+          .from('sales')
+          .stream(primaryKey: ['id'])
+          .eq('branch_code', branchCode)
+          .order('timestamp', ascending: false)
+          .map((data) => data.map((json) => SaleRecord.fromJson(json)).toList())
+          .handleError((e, st) {
+            return <SaleRecord>[];
+          });
+    } catch (_) {
+      return Stream.value([]);
+    }
   }
 }

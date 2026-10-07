@@ -27,30 +27,22 @@ class SupabaseConfig {
       // Priority 1: Environment Variables (--dart-define)
       url = const String.fromEnvironment('SUPABASE_URL');
       anonKey = const String.fromEnvironment('SUPABASE_ANON_KEY');
-      String serviceKey = const String.fromEnvironment('SUPABASE_SERVICE_ROLE_KEY');
 
       // Priority 2: .env file
       if (url.isEmpty) url = dotenv.env['SUPABASE_URL'] ?? '';
       if (anonKey.isEmpty) anonKey = dotenv.env['SUPABASE_ANON_KEY'] ?? '';
-      if (serviceKey.isEmpty) serviceKey = dotenv.env['SUPABASE_SERVICE_ROLE_KEY'] ?? '';
 
       // Priority 3: Hardcoded Fallback
       if (url.isEmpty) {
-        url = 'https://rdlwqnnzbtxwyasdebkj.supabase.co'; 
+        url = 'https://hgkkxffcsuobctmistfc.supabase.co'; 
       }
       
       if (anonKey.isEmpty) {
-        anonKey = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InJkbHdxbm56YnR4d3lhc2RlYmtqIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODExMDkwMzMsImV4cCI6MjA5NjY4NTAzM30.IJwhUmZ1xiGMCCHUGDbD5M1zcKbqXOtuPg-xGISluOQ';
+        anonKey = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Imhna2t4ZmZjc3VvYmN0bWlzdGZjIiwicm9sZSI6ImFub24iLCJpYXQiOjE3OTAzNTYyOTAsImV4cCI6MjEwNTkzMjI5MH0.ZApEmQfduzw-kOpwOcSbGdXqNksti8yvJZYWuNaoKdQ';
       }
-      
+
       final cleanUrl = url.trim();
       final cleanKey = anonKey.trim();
-
-      if (serviceKey.isEmpty && cleanUrl.contains('rdlwqnnzbtxwyasdebkj')) {
-        serviceKey = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InJkbHdxbm56YnR4d3lhc2RlYmtqIiwicm9sZSI6InNlcnZpY2Vfcm9sZSIsImlhdCI6MTc4MTEwOTAzMywiZXhwIjoyMDk2Njg1MDMzfQ.werb0ZSuepQ6-MPf6Z5ahXexw61KsRZdV3iMQQ2dLVU';
-      }
-
-      final cleanServiceKey = serviceKey.trim();
 
       if (cleanUrl.isEmpty || !cleanUrl.startsWith('http')) {
         throw Exception('Supabase URL is invalid.');
@@ -71,18 +63,7 @@ class SupabaseConfig {
       // Note: We avoid creating a manual public client because it breaks PKCE storage
       _publicClient = Supabase.instance.client;
 
-      if (cleanServiceKey.isNotEmpty) {
-        _adminClient = SupabaseClient(
-          cleanUrl, 
-          cleanServiceKey,
-          headers: {
-            'apikey': cleanServiceKey,
-            'Authorization': 'Bearer $cleanServiceKey',
-          },
-        );
-      } else {
-        _adminClient = _publicClient;
-      }
+      _adminClient = _publicClient;
 
       _isInitialized = true;
       debugPrint('Supabase initialized successfully via standard instance.');

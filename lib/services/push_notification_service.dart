@@ -23,7 +23,7 @@ class PushNotificationService {
       await Permission.notification.request();
 
       const AndroidInitializationSettings initializationSettingsAndroid =
-          AndroidInitializationSettings('@mipmap/launcher_icon');
+          AndroidInitializationSettings('@drawable/ic_notification');
 
       const InitializationSettings initializationSettings = InitializationSettings(
         android: initializationSettingsAndroid,
@@ -59,6 +59,7 @@ class PushNotificationService {
       'ms_critical_alerts',
       'Important System Alerts',
       channelDescription: 'Used for critical meat shop operations and reports',
+      icon: 'ic_notification',
       importance: Importance.max,
       priority: Priority.high,
       showWhen: true,

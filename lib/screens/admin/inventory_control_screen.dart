@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:image_picker/image_picker.dart';
+import '../../widgets/camera_barcode_scanner_dialog.dart';
 import '../../core/constants.dart';
 import '../../widgets/main_app_bar.dart';
 import '../../services/product_service.dart';
@@ -16,10 +17,10 @@ import '../../services/user_provider.dart';
 import '../../models/user_model.dart';
 import '../../services/transfer_provider.dart';
 import '../../widgets/passcode_guard.dart';
+import '../../widgets/app_cached_image.dart';
 
 import '../../services/customer_provider.dart';
 import '../../services/product_seeder.dart';
-import '../../models/butcher_models.dart';
 import '../../widgets/role_pop_scope.dart';
 
 class InventoryControlScreen extends ConsumerStatefulWidget {
@@ -72,7 +73,7 @@ class _InventoryControlScreenState extends ConsumerState<InventoryControlScreen>
                     userRole: user.activePrimaryRole.name.toUpperCase(),
                     currentRoute: currentRoute,
                     items: MenuService.getMenuItemsForUser(user),
-                    onTap: (route) => MenuService.navigate(context, route, currentRoute),
+                    onTap: (route) => MenuService.navigate(context, ref, route, currentRoute),
                   ),
                 ),
           body: Row(
@@ -84,7 +85,7 @@ class _InventoryControlScreenState extends ConsumerState<InventoryControlScreen>
                   userRole: user.activePrimaryRole.name.toUpperCase(),
                   currentRoute: currentRoute,
                   items: MenuService.getMenuItemsForUser(user),
-                  onTap: (route) => MenuService.navigate(context, route, currentRoute),
+                  onTap: (route) => MenuService.navigate(context, ref, route, currentRoute),
                 ),
               Expanded(
                 child: SafeArea(
@@ -107,7 +108,9 @@ class _InventoryControlScreenState extends ConsumerState<InventoryControlScreen>
                                   return _selectedCategory == 'All' || normCat == _selectedCategory;
                                 })
                                 .where((p) => p.name.toLowerCase().contains(_searchQuery.toLowerCase()) || 
-                                               p.category.toLowerCase().contains(_searchQuery.toLowerCase()))
+                                               p.category.toLowerCase().contains(_searchQuery.toLowerCase()) ||
+                                               (p.sku != null && p.sku!.toLowerCase().contains(_searchQuery.toLowerCase())) ||
+                                               p.id.toLowerCase().contains(_searchQuery.toLowerCase()))
                                 .toList();
 
                             // Sort: Priced products and higher quantity first
@@ -156,72 +159,169 @@ class _InventoryControlScreenState extends ConsumerState<InventoryControlScreen>
     );
   }
 
+  void _scanBarcodeToUpdateStock(BuildContext context, WidgetRef ref) {
+    CameraBarcodeScannerDialog.show(
+      context,
+      title: 'Scan Product Barcode to Update Stock',
+      onScanned: (rawValue) {
+        final products = ref.read(productsFutureProvider).value ?? [];
+        final matched = products.where((p) => !p.isDeleted).where((p) {
+          final skuMatch = p.sku != null && p.sku!.toLowerCase() == rawValue.trim().toLowerCase();
+          final idMatch = p.id.toLowerCase() == rawValue.trim().toLowerCase();
+          final nameMatch = p.name.toLowerCase() == rawValue.trim().toLowerCase();
+          return skuMatch || idMatch || nameMatch;
+        }).firstOrNull;
+
+        if (matched != null) {
+          _showUpdateStockDialog(context, ref, matched);
+          return 'Found: ${matched.name}';
+        } else {
+          return 'No product found for barcode "$rawValue"';
+        }
+      },
+    );
+  }
+
+  void _handleBarcodeSearchSubmit(String query) {
+    final clean = query.trim();
+    if (clean.isEmpty) return;
+
+    final products = ref.read(productsFutureProvider).value ?? [];
+    final matched = products.where((p) => !p.isDeleted).where((p) {
+      final skuMatch = p.sku != null && p.sku!.toLowerCase() == clean.toLowerCase();
+      final idMatch = p.id.toLowerCase() == clean.toLowerCase();
+      final nameMatch = p.name.toLowerCase() == clean.toLowerCase();
+      return skuMatch || idMatch || nameMatch;
+    }).firstOrNull;
+
+    if (matched != null) {
+      _showUpdateStockDialog(context, ref, matched);
+    }
+  }
+
   Widget _buildFilters(ThemeData theme, List<Product> products) {
     final categories = ['All', ...products.map((p) => _normalizeCategory(p)).toSet()];
-    final isMobile = ResponsiveLayout.isMobile(context);
 
-    return Wrap(
-      spacing: AppSpacing.m,
-      runSpacing: AppSpacing.m,
-      crossAxisAlignment: WrapCrossAlignment.end,
-      children: [
-        SizedBox(
-          width: isMobile ? double.infinity : 400,
-          child: TextField(
-            onChanged: (v) => setState(() => _searchQuery = v),
-            decoration: InputDecoration(
-              hintText: 'Search by Name (e.g. Cow), Category (e.g. Pork), or both...',
-              prefixIcon: const Icon(Icons.search),
-              suffixIcon: _searchQuery.isNotEmpty 
-                ? IconButton(icon: const Icon(Icons.clear), onPressed: () => setState(() => _searchQuery = ''))
-                : null,
-              filled: true,
-              fillColor: theme.cardTheme.color,
-              border: OutlineInputBorder(
-                borderRadius: BorderRadius.circular(AppRadius.m),
-                borderSide: BorderSide(color: theme.dividerColor),
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        final bool isCompact = constraints.maxWidth < 650;
+
+        if (isCompact) {
+          return Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              TextField(
+                onChanged: (v) => setState(() => _searchQuery = v),
+                onSubmitted: _handleBarcodeSearchSubmit,
+                decoration: InputDecoration(
+                  hintText: 'Search or scan barcode / SKU...',
+                  prefixIcon: const Icon(Icons.qr_code_scanner),
+                  suffixIcon: Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      IconButton(
+                        icon: const Icon(Icons.camera_alt_outlined),
+                        tooltip: 'Scan with Camera',
+                        onPressed: () => _scanBarcodeToUpdateStock(context, ref),
+                      ),
+                      if (_searchQuery.isNotEmpty)
+                        IconButton(
+                          icon: const Icon(Icons.clear),
+                          onPressed: () => setState(() => _searchQuery = ''),
+                        ),
+                    ],
+                  ),
+                  filled: true,
+                  fillColor: theme.cardTheme.color,
+                  border: OutlineInputBorder(
+                    borderRadius: BorderRadius.circular(AppRadius.m),
+                    borderSide: BorderSide(color: theme.dividerColor),
+                  ),
+                ),
+              ),
+              const SizedBox(height: AppSpacing.m),
+              DropdownButtonFormField<String>(
+                initialValue: categories.contains(_selectedCategory) ? _selectedCategory : 'All',
+                isExpanded: true,
+                decoration: InputDecoration(
+                  labelText: 'Sort Category',
+                  filled: true,
+                  fillColor: theme.cardTheme.color,
+                  border: OutlineInputBorder(borderRadius: BorderRadius.circular(AppRadius.m)),
+                ),
+                items: categories.map((c) => DropdownMenuItem(
+                  value: c, 
+                  child: Text(c, overflow: TextOverflow.ellipsis, maxLines: 1),
+                )).toList(),
+                onChanged: (v) => setState(() => _selectedCategory = v!),
+              ),
+            ],
+          );
+        }
+
+        return Row(
+          children: [
+            Expanded(
+              flex: 2,
+              child: TextField(
+                onChanged: (v) => setState(() => _searchQuery = v),
+                onSubmitted: _handleBarcodeSearchSubmit,
+                decoration: InputDecoration(
+                  hintText: 'Search or scan barcode / SKU...',
+                  prefixIcon: const Icon(Icons.qr_code_scanner),
+                  suffixIcon: Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      IconButton(
+                        icon: const Icon(Icons.camera_alt_outlined),
+                        tooltip: 'Scan with Camera',
+                        onPressed: () => _scanBarcodeToUpdateStock(context, ref),
+                      ),
+                      if (_searchQuery.isNotEmpty)
+                        IconButton(
+                          icon: const Icon(Icons.clear),
+                          onPressed: () => setState(() => _searchQuery = ''),
+                        ),
+                    ],
+                  ),
+                  filled: true,
+                  fillColor: theme.cardTheme.color,
+                  border: OutlineInputBorder(
+                    borderRadius: BorderRadius.circular(AppRadius.m),
+                    borderSide: BorderSide(color: theme.dividerColor),
+                  ),
+                ),
               ),
             ),
-          ),
-        ),
-        SizedBox(
-          width: isMobile ? double.infinity : 220,
-          child: DropdownButtonFormField<String>(
-            initialValue: categories.contains(_selectedCategory) ? _selectedCategory : 'All',
-            isExpanded: true,
-            decoration: InputDecoration(
-              labelText: 'Sort Category',
-              filled: true,
-              fillColor: theme.cardTheme.color,
-              border: OutlineInputBorder(borderRadius: BorderRadius.circular(AppRadius.m)),
+            const SizedBox(width: AppSpacing.m),
+            Expanded(
+              flex: 1,
+              child: DropdownButtonFormField<String>(
+                initialValue: categories.contains(_selectedCategory) ? _selectedCategory : 'All',
+                isExpanded: true,
+                decoration: InputDecoration(
+                  labelText: 'Sort Category',
+                  filled: true,
+                  fillColor: theme.cardTheme.color,
+                  border: OutlineInputBorder(borderRadius: BorderRadius.circular(AppRadius.m)),
+                ),
+                items: categories.map((c) => DropdownMenuItem(
+                  value: c, 
+                  child: Text(c, overflow: TextOverflow.ellipsis, maxLines: 1),
+                )).toList(),
+                onChanged: (v) => setState(() => _selectedCategory = v!),
+              ),
             ),
-            items: categories.map((c) => DropdownMenuItem(
-              value: c, 
-              child: Text(c, overflow: TextOverflow.ellipsis, maxLines: 1),
-            )).toList(),
-            onChanged: (v) => setState(() => _selectedCategory = v!),
-          ),
-        ),
-      ],
+          ],
+        );
+      },
     );
   }
 
   Widget _buildHeader(BuildContext context, WidgetRef ref, List<Product> products, {required bool isAdmin}) {
     final theme = Theme.of(context);
-    final isMobile = ResponsiveLayout.isMobile(context);
-    final pendingTransfers = ref.watch(pendingIncomingTransfersProvider);
 
     final actionButtons = [
-      if (pendingTransfers.isNotEmpty)
-        ElevatedButton.icon(
-          onPressed: () => Navigator.pushNamed(context, '/cashier/verify-stock'),
-          icon: const Icon(Icons.qr_code_scanner, size: 18),
-          label: Text('Verify Incoming (${pendingTransfers.length})', style: const TextStyle(fontSize: 12, fontWeight: FontWeight.bold)),
-          style: ElevatedButton.styleFrom(
-            backgroundColor: Colors.orange.shade800,
-            foregroundColor: Colors.white,
-          ),
-        ),
       if (isAdmin) ...[
         PopupMenuButton<String>(
           onSelected: (val) {
@@ -273,6 +373,15 @@ class _InventoryControlScreenState extends ConsumerState<InventoryControlScreen>
           ),
         ),
         OutlinedButton.icon(
+          onPressed: () => Navigator.pushNamed(context, '/warehouse'),
+          icon: const Icon(Icons.warehouse_outlined, size: 18),
+          label: const Text('Warehouse Hub', style: TextStyle(fontSize: 12)),
+          style: OutlinedButton.styleFrom(
+            foregroundColor: theme.colorScheme.primary,
+            side: BorderSide(color: theme.colorScheme.primary),
+          ),
+        ),
+        OutlinedButton.icon(
           onPressed: () => Navigator.pushNamed(context, '/admin/product-report'),
           icon: const Icon(Icons.assessment_outlined, size: 18),
           label: const Text('Activity Report', style: TextStyle(fontSize: 12)),
@@ -283,23 +392,48 @@ class _InventoryControlScreenState extends ConsumerState<InventoryControlScreen>
         ),
         OutlinedButton.icon(
           onPressed: () async {
-            final confirm = await showDialog<bool>(
+            showDialog(
               context: context,
               builder: (context) => AlertDialog(
-                title: const Text('Initialize Catalog?'),
-                content: const Text('This will initialize your store catalog with 111 default cosmetic products across Creams & Lotions, Haircare, Shower Gels, Perfumes, and Facial Care. Continue?'),
+                title: const Text('Catalog & Stock Defaults'),
+                content: const Column(
+                  mainAxisSize: MainAxisSize.min,
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text('Choose an action:'),
+                    SizedBox(height: 12),
+                    Text('• Load Catalog: Populates default cosmetic product categories with 0.0 Pcs initial stock.', style: TextStyle(fontSize: 12, color: Colors.grey)),
+                    SizedBox(height: 6),
+                    Text('• Reset All to 0 Pcs: Sets ALL existing products store & warehouse stock to 0.0 Pcs.', style: TextStyle(fontSize: 12, color: Colors.grey)),
+                  ],
+                ),
                 actions: [
-                  TextButton(onPressed: () => Navigator.pop(context, false), child: const Text('CANCEL')),
-                  ElevatedButton(onPressed: () => Navigator.pop(context, true), child: const Text('INITIALIZE')),
+                  TextButton(onPressed: () => Navigator.pop(context), child: const Text('CANCEL')),
+                  OutlinedButton(
+                    onPressed: () async {
+                      Navigator.pop(context);
+                      await ref.read(productSeederProvider).seedProducts();
+                      if (context.mounted) {
+                        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Catalog loaded with 0.0 Pcs stock defaults!'), backgroundColor: Colors.green));
+                      }
+                    },
+                    child: const Text('LOAD CATALOG (0 PCS)'),
+                  ),
+                  ElevatedButton(
+                    style: ElevatedButton.styleFrom(backgroundColor: Colors.red, foregroundColor: Colors.white),
+                    onPressed: () async {
+                      Navigator.pop(context);
+                      await ref.read(productSeederProvider).resetAllStockToZero();
+                      await ref.read(productSeederProvider).seedProducts();
+                      if (context.mounted) {
+                        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('✅ All product stock quantities reset to 0.0 Pcs!'), backgroundColor: Colors.green));
+                      }
+                    },
+                    child: const Text('RESET ALL TO 0 PCS'),
+                  ),
                 ],
               ),
             );
-            if (confirm == true) {
-              await ref.read(productSeederProvider).seedProducts();
-              if (context.mounted) {
-                ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Catalog initialized successfully!')));
-              }
-            }
           },
           icon: const Icon(Icons.refresh, size: 18),
           label: const Text('Load Defaults', style: TextStyle(fontSize: 12)),
@@ -311,61 +445,70 @@ class _InventoryControlScreenState extends ConsumerState<InventoryControlScreen>
       ]
     ];
 
-    if (isMobile) {
-      return Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Text('Master Stock List', 
-            style: TextStyle(fontSize: 22, fontWeight: FontWeight.bold, color: theme.colorScheme.onSurface),
-            overflow: TextOverflow.ellipsis,
-            maxLines: 1,
-          ),
-          const SizedBox(height: 2),
-          Text('Manage products, pricing, and stock levels', 
-            style: TextStyle(color: theme.colorScheme.onSurfaceVariant, fontSize: 12),
-            overflow: TextOverflow.ellipsis,
-            maxLines: 1,
-          ),
-          if (actionButtons.isNotEmpty) ...[
-            const SizedBox(height: AppSpacing.m),
-            Wrap(
-              spacing: 8,
-              runSpacing: 8,
-              children: actionButtons,
-            ),
-          ],
-        ],
-      );
-    }
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        final bool isCompact = constraints.maxWidth < 950;
 
-    return Row(
-      mainAxisAlignment: MainAxisAlignment.spaceBetween,
-      children: [
-        Expanded(
-          child: Column(
+        if (isCompact) {
+          return Column(
             crossAxisAlignment: CrossAxisAlignment.start,
-            mainAxisSize: MainAxisSize.min,
             children: [
               Text('Master Stock List', 
-                style: TextStyle(fontSize: 24, fontWeight: FontWeight.bold, color: theme.colorScheme.onSurface),
+                style: TextStyle(fontSize: 22, fontWeight: FontWeight.bold, color: theme.colorScheme.onSurface),
                 overflow: TextOverflow.ellipsis,
                 maxLines: 1,
               ),
+              const SizedBox(height: 2),
               Text('Manage products, pricing, and stock levels', 
-                style: TextStyle(color: theme.colorScheme.onSurfaceVariant),
+                style: TextStyle(color: theme.colorScheme.onSurfaceVariant, fontSize: 12),
                 overflow: TextOverflow.ellipsis,
                 maxLines: 1,
               ),
+              if (actionButtons.isNotEmpty) ...[
+                const SizedBox(height: AppSpacing.m),
+                Wrap(
+                  spacing: 8,
+                  runSpacing: 8,
+                  children: actionButtons,
+                ),
+              ],
             ],
-          ),
-        ),
-        if (actionButtons.isNotEmpty)
-          Wrap(
-            spacing: 8,
-            runSpacing: 8,
-            children: actionButtons,
-          ),
-      ],
+          );
+        }
+
+        return Row(
+          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+          children: [
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Text('Master Stock List', 
+                    style: TextStyle(fontSize: 24, fontWeight: FontWeight.bold, color: theme.colorScheme.onSurface),
+                    overflow: TextOverflow.ellipsis,
+                    maxLines: 1,
+                  ),
+                  Text('Manage products, pricing, and stock levels', 
+                    style: TextStyle(color: theme.colorScheme.onSurfaceVariant),
+                    overflow: TextOverflow.ellipsis,
+                    maxLines: 1,
+                  ),
+                ],
+              ),
+            ),
+            if (actionButtons.isNotEmpty)
+              Flexible(
+                child: Wrap(
+                  alignment: WrapAlignment.end,
+                  spacing: 8,
+                  runSpacing: 8,
+                  children: actionButtons,
+                ),
+              ),
+          ],
+        );
+      },
     );
   }
 
@@ -771,8 +914,11 @@ class _InventoryControlScreenState extends ConsumerState<InventoryControlScreen>
                                           ),
                                           if (isSelected) ...[
                                             const SizedBox(height: 8),
-                                            Row(
-                                              mainAxisAlignment: MainAxisAlignment.end,
+                                            Wrap(
+                                              alignment: WrapAlignment.end,
+                                              crossAxisAlignment: WrapCrossAlignment.center,
+                                              spacing: 8,
+                                              runSpacing: 6,
                                               children: [
                                                 Text(
                                                   '₵${p.retailPrice.toStringAsFixed(2)}',
@@ -782,9 +928,8 @@ class _InventoryControlScreenState extends ConsumerState<InventoryControlScreen>
                                                     decoration: TextDecoration.lineThrough,
                                                   ),
                                                 ),
-                                                const SizedBox(width: 8),
                                                 SizedBox(
-                                                  width: 76,
+                                                  width: 72,
                                                   height: 32,
                                                   child: TextField(
                                                     controller: customPercentageControllers[p.id],
@@ -813,9 +958,8 @@ class _InventoryControlScreenState extends ConsumerState<InventoryControlScreen>
                                                     },
                                                   ),
                                                 ),
-                                                const SizedBox(width: 8),
                                                 SizedBox(
-                                                  width: 90,
+                                                  width: 85,
                                                   height: 32,
                                                   child: TextField(
                                                     controller: customPriceControllers[p.id],
@@ -916,10 +1060,14 @@ class _InventoryControlScreenState extends ConsumerState<InventoryControlScreen>
     final products = ref.read(productsFutureProvider).value ?? [];
     final formKey = GlobalKey<FormState>();
     final nameController = TextEditingController();
+    final skuController = TextEditingController();
     final retailPriceController = TextEditingController();
     final wholesalePriceController = TextEditingController();
     final costPriceController = TextEditingController();
-    final stockController = TextEditingController();
+    final stockController = TextEditingController(text: '0');
+    final pcsPerPackController = TextEditingController(text: '12');
+    final packsPerBoxController = TextEditingController(text: '10');
+    final alertThresholdController = TextEditingController(text: '2');
     final otherCategoryController = TextEditingController();
     final customNameController = TextEditingController();
     final theme = Theme.of(context);
@@ -927,6 +1075,10 @@ class _InventoryControlScreenState extends ConsumerState<InventoryControlScreen>
     String selectedCategory = 'Skincare';
     String? selectedProductName;
     WeightUnit selectedUnit = WeightUnit.pcs;
+    WeightUnit alertUnit = WeightUnit.box; // Boxes default as requested
+    bool hasBarcode = true;
+    bool hasPacks = false;
+    bool hasBoxes = false;
     bool isUnlimited = false;
 
     final Map<String, List<String>> categoryProductMap = {
@@ -980,11 +1132,17 @@ class _InventoryControlScreenState extends ConsumerState<InventoryControlScreen>
     String? imageName;
     bool isUploading = false;
 
+    final standardSizes = ['Big', 'Medium', 'Small', 'Mini', 'Large', 'Extra Large', 'Custom'];
+    bool hasSize = false;
+    String selectedSize = 'Medium';
+    final customSizeController = TextEditingController();
+
     showDialog(
       context: context,
       barrierDismissible: false,
       builder: (context) => StatefulBuilder(
         builder: (context, setState) => AlertDialog(
+          insetPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 16),
           scrollable: true,
           shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(AppRadius.l)),
           title: Container(
@@ -1005,9 +1163,11 @@ class _InventoryControlScreenState extends ConsumerState<InventoryControlScreen>
           contentPadding: const EdgeInsets.all(AppSpacing.l),
           content: Form(
             key: formKey,
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              children: [
+            child: ConstrainedBox(
+              constraints: const BoxConstraints(maxWidth: 500),
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
                 Center(
                   child: InkWell(
                     onTap: () async {
@@ -1050,7 +1210,7 @@ class _InventoryControlScreenState extends ConsumerState<InventoryControlScreen>
                   initialValue: selectedCategory,
                   isExpanded: true,
                   decoration: const InputDecoration(labelText: 'Category'),
-                  items: categories.map((c) => DropdownMenuItem(value: c, child: Text(c))).toList(),
+                  items: categories.map((c) => DropdownMenuItem(value: c, child: Text(c, overflow: TextOverflow.ellipsis))).toList(),
                   onChanged: (v) => setState(() {
                     selectedCategory = v!;
                     selectedProductName = null;
@@ -1075,7 +1235,7 @@ class _InventoryControlScreenState extends ConsumerState<InventoryControlScreen>
                   isExpanded: true,
                   decoration: const InputDecoration(labelText: 'Product Name'),
                   items: (categoryProductMap[selectedCategory] ?? (products.where((p) => p.category == selectedCategory).map((p) => p.name).toSet().toList()..add('Other'))).map((name) {
-                    return DropdownMenuItem(value: name, child: Text(name));
+                    return DropdownMenuItem(value: name, child: Text(name, overflow: TextOverflow.ellipsis));
                   }).toList(),
                   onChanged: (v) => setState(() {
                     selectedProductName = v;
@@ -1100,6 +1260,50 @@ class _InventoryControlScreenState extends ConsumerState<InventoryControlScreen>
                     validator: (v) => ((selectedProductName == 'Other' || selectedProductName == 'Custom Entry') && (v == null || v.isEmpty)) ? 'Required' : null,
                   ),
                 ],
+                const SizedBox(height: AppSpacing.s),
+                SwitchListTile(
+                  title: const Text('Barcode Available', style: TextStyle(fontSize: 13, fontWeight: FontWeight.bold)),
+                  subtitle: Text(hasBarcode ? 'Product has a barcode/SKU to scan' : 'No barcode for this product', style: const TextStyle(fontSize: 11)),
+                  value: hasBarcode,
+                  onChanged: (v) => setState(() {
+                    hasBarcode = v;
+                    if (!hasBarcode) skuController.clear();
+                  }),
+                  activeThumbColor: theme.colorScheme.primary,
+                  dense: true,
+                  contentPadding: EdgeInsets.zero,
+                ),
+                if (hasBarcode) ...[
+                  const SizedBox(height: AppSpacing.xs),
+                  Row(
+                    children: [
+                      Expanded(
+                        child: _buildFormTextField(
+                          context: context,
+                          controller: skuController,
+                          label: 'SKU / Barcode Number',
+                          hint: 'Type or scan barcode...',
+                          icon: Icons.qr_code_scanner,
+                        ),
+                      ),
+                      const SizedBox(width: 8),
+                      IconButton(
+                        icon: const Icon(Icons.camera_alt_outlined),
+                        tooltip: 'Scan Barcode with Camera',
+                        onPressed: () {
+                          CameraBarcodeScannerDialog.show(
+                            context,
+                            title: 'Scan Barcode into SKU',
+                            onScanned: (raw) {
+                              skuController.text = raw;
+                              return 'SKU captured: $raw';
+                            },
+                          );
+                        },
+                      ),
+                    ],
+                  ),
+                ],
                 const SizedBox(height: AppSpacing.m),
                 Row(
                   children: [
@@ -1117,7 +1321,10 @@ class _InventoryControlScreenState extends ConsumerState<InventoryControlScreen>
                         },
                         validator: (v) {
                           if (v == null || v.isEmpty) return 'Required';
-                          if (double.tryParse(v) == null) return 'Invalid price';
+                          final val = double.tryParse(v);
+                          if (val == null) return 'Invalid price';
+                          final cost = double.tryParse(costPriceController.text) ?? 0.0;
+                          if (cost > 0 && val < cost) return '< Cost';
                           return null;
                         },
                       ),
@@ -1137,7 +1344,10 @@ class _InventoryControlScreenState extends ConsumerState<InventoryControlScreen>
                         },
                         validator: (v) {
                           if (v == null || v.isEmpty) return 'Required';
-                          if (double.tryParse(v) == null) return 'Invalid price';
+                          final val = double.tryParse(v);
+                          if (val == null) return 'Invalid price';
+                          final retail = double.tryParse(retailPriceController.text) ?? 0.0;
+                          if (retail > 0 && val > retail) return '> Retail';
                           return null;
                         },
                       ),
@@ -1157,7 +1367,10 @@ class _InventoryControlScreenState extends ConsumerState<InventoryControlScreen>
                         },
                         validator: (v) {
                           if (v == null || v.isEmpty) return 'Required';
-                          if (double.tryParse(v) == null) return 'Invalid price';
+                          final val = double.tryParse(v);
+                          if (val == null) return 'Invalid price';
+                          final retail = double.tryParse(retailPriceController.text) ?? 0.0;
+                          if (retail > 0 && val > retail) return '> Retail';
                           return null;
                         },
                       ),
@@ -1165,14 +1378,94 @@ class _InventoryControlScreenState extends ConsumerState<InventoryControlScreen>
                   ],
                 ),
                 const SizedBox(height: AppSpacing.m),
+                const Align(
+                  alignment: Alignment.centerLeft,
+                  child: Text('Packaging Options & Units:', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 13)),
+                ),
+                const SizedBox(height: 4),
+                Wrap(
+                  crossAxisAlignment: WrapCrossAlignment.center,
+                  spacing: 4,
+                  runSpacing: 0,
+                  children: [
+                    Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: const [
+                        Checkbox(value: true, onChanged: null),
+                        Text('1. Pcs (Default)', style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold)),
+                      ],
+                    ),
+                    Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Checkbox(
+                          value: hasPacks,
+                          onChanged: (v) => setState(() => hasPacks = v ?? false),
+                        ),
+                        const Text('2. Packs', style: TextStyle(fontSize: 12)),
+                      ],
+                    ),
+                    Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Checkbox(
+                          value: hasBoxes,
+                          onChanged: (v) => setState(() => hasBoxes = v ?? false),
+                        ),
+                        const Text('3. Boxes', style: TextStyle(fontSize: 12)),
+                      ],
+                    ),
+                  ],
+                ),
+                if (hasPacks || hasBoxes) ...[
+                  const SizedBox(height: 8),
+                  Row(
+                    children: [
+                      if (hasPacks)
+                        Expanded(
+                          child: _buildFormTextField(
+                            context: context,
+                            controller: pcsPerPackController,
+                            label: 'Pcs per Pack',
+                            hint: 'e.g. 12',
+                            keyboardType: const TextInputType.numberWithOptions(decimal: true),
+                            validator: (v) {
+                              if (!hasPacks) return null;
+                              if (v == null || v.isEmpty) return 'Required';
+                              if (double.tryParse(v) == null) return 'Invalid';
+                              return null;
+                            },
+                          ),
+                        ),
+                      if (hasPacks && hasBoxes) const SizedBox(width: AppSpacing.s),
+                      if (hasBoxes)
+                        Expanded(
+                          child: _buildFormTextField(
+                            context: context,
+                            controller: packsPerBoxController,
+                            label: hasPacks ? 'Packs per Box' : 'Pcs per Box',
+                            hint: hasPacks ? 'e.g. 10' : 'e.g. 120',
+                            keyboardType: const TextInputType.numberWithOptions(decimal: true),
+                            validator: (v) {
+                              if (!hasBoxes) return null;
+                              if (v == null || v.isEmpty) return 'Required';
+                              if (double.tryParse(v) == null) return 'Invalid';
+                              return null;
+                            },
+                          ),
+                        ),
+                    ],
+                  ),
+                ],
+                const SizedBox(height: AppSpacing.m),
                 Row(
                   children: [
                     Expanded(
-                      flex: 2,
+                      flex: 3,
                       child: _buildFormTextField(
                         context: context,
                         controller: stockController,
-                        label: isUnlimited ? 'Current Quantity (Display only)' : 'Initial Stock',
+                        label: isUnlimited ? 'Current Qty' : 'Initial Stock',
                         suffix: selectedUnit.name,
                         keyboardType: const TextInputType.numberWithOptions(decimal: true),
                         validator: (v) {
@@ -1185,12 +1478,50 @@ class _InventoryControlScreenState extends ConsumerState<InventoryControlScreen>
                     ),
                     const SizedBox(width: AppSpacing.s),
                     Expanded(
+                      flex: 2,
                       child: DropdownButtonFormField<WeightUnit>(
                         initialValue: selectedUnit,
                         isExpanded: true,
                         decoration: const InputDecoration(labelText: 'Unit'),
-                        items: [WeightUnit.pcs, WeightUnit.box].map((u) => DropdownMenuItem(value: u, child: Text(u == WeightUnit.pcs ? 'PCS' : 'BOXES'))).toList(),
+                        items: [WeightUnit.pcs, WeightUnit.pack, WeightUnit.box].map((u) => DropdownMenuItem(value: u, child: Text(u.displayName, overflow: TextOverflow.ellipsis))).toList(),
                         onChanged: (v) => setState(() => selectedUnit = v!),
+                      ),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: AppSpacing.m),
+                Row(
+                  children: [
+                    Expanded(
+                      flex: 3,
+                      child: _buildFormTextField(
+                        context: context,
+                        controller: alertThresholdController,
+                        label: 'Stock Alert Threshold',
+                        hint: 'e.g. 2 Boxes',
+                        keyboardType: const TextInputType.numberWithOptions(decimal: true),
+                        validator: (v) {
+                          if (v == null || v.isEmpty) return 'Required';
+                          if (double.tryParse(v) == null) return 'Invalid';
+                          return null;
+                        },
+                      ),
+                    ),
+                    const SizedBox(width: AppSpacing.s),
+                    Expanded(
+                      flex: 2,
+                      child: DropdownButtonFormField<WeightUnit>(
+                        initialValue: alertUnit,
+                        isExpanded: true,
+                        decoration: const InputDecoration(labelText: 'Alert Unit'),
+                        items: const [
+                          DropdownMenuItem(value: WeightUnit.pcs, child: Text('1. PCS', overflow: TextOverflow.ellipsis)),
+                          DropdownMenuItem(value: WeightUnit.pack, child: Text('2. PACKS', overflow: TextOverflow.ellipsis)),
+                          DropdownMenuItem(value: WeightUnit.box, child: Text('3. BOXES', overflow: TextOverflow.ellipsis)),
+                        ],
+                        onChanged: (u) {
+                          if (u != null) setState(() => alertUnit = u);
+                        },
                       ),
                     ),
                   ],
@@ -1205,8 +1536,52 @@ class _InventoryControlScreenState extends ConsumerState<InventoryControlScreen>
                   contentPadding: EdgeInsets.zero,
                   dense: true,
                 ),
+                const SizedBox(height: AppSpacing.s),
+                SwitchListTile(
+                  title: const Text('Enable Size / Variant', style: TextStyle(fontSize: 13, fontWeight: FontWeight.bold)),
+                  subtitle: Text(hasSize ? 'Size: ${selectedSize == 'Custom' ? (customSizeController.text.isEmpty ? 'Custom' : customSizeController.text) : selectedSize}' : 'Default Size: Standard', style: const TextStyle(fontSize: 11)),
+                  value: hasSize, 
+                  onChanged: (v) => setState(() => hasSize = v),
+                  activeThumbColor: theme.colorScheme.primary,
+                  dense: true,
+                  contentPadding: EdgeInsets.zero,
+                ),
+                if (hasSize) ...[
+                  const SizedBox(height: 4),
+                  Row(
+                    children: [
+                      Expanded(
+                        child: DropdownButtonFormField<String>(
+                          initialValue: standardSizes.contains(selectedSize) ? selectedSize : 'Custom',
+                          isExpanded: true,
+                          decoration: const InputDecoration(
+                            labelText: 'Select Size',
+                            prefixIcon: Icon(Icons.straighten_rounded),
+                          ),
+                          items: standardSizes.map((s) => DropdownMenuItem(value: s, child: Text(s, overflow: TextOverflow.ellipsis))).toList(),
+                          onChanged: (v) {
+                            if (v != null) setState(() => selectedSize = v);
+                          },
+                        ),
+                      ),
+                      if (selectedSize == 'Custom') ...[
+                        const SizedBox(width: AppSpacing.s),
+                        Expanded(
+                          child: _buildFormTextField(
+                            context: context,
+                            controller: customSizeController,
+                            label: 'Custom Size',
+                            hint: 'e.g. 500ml, 100g, XL',
+                            validator: (v) => (hasSize && selectedSize == 'Custom' && (v == null || v.trim().isEmpty)) ? 'Required' : null,
+                          ),
+                        ),
+                      ],
+                    ],
+                  ),
+                ],
               ],
             ),
+          ),
           ),
           actions: [
             TextButton(
@@ -1217,9 +1592,33 @@ class _InventoryControlScreenState extends ConsumerState<InventoryControlScreen>
             ElevatedButton(
               onPressed: isUploading ? null : () async {
                 if (formKey.currentState!.validate()) {
+                  final double retail = double.tryParse(retailPriceController.text) ?? 0.0;
+                  final double wholesale = double.tryParse(wholesalePriceController.text) ?? 0.0;
+                  final double cost = double.tryParse(costPriceController.text) ?? 0.0;
+
+                  if (cost > 0 && retail < cost) {
+                    ScaffoldMessenger.of(context).showSnackBar(
+                      SnackBar(
+                        content: Text('⚠️ Retail Price (₵${retail.toStringAsFixed(2)}) cannot be less than Cost Price (₵${cost.toStringAsFixed(2)}).'),
+                        backgroundColor: Colors.red,
+                      ),
+                    );
+                    return;
+                  }
+
+                  if (retail > 0 && wholesale > retail) {
+                    ScaffoldMessenger.of(context).showSnackBar(
+                      SnackBar(
+                        content: Text('⚠️ Wholesale Price (₵${wholesale.toStringAsFixed(2)}) cannot be greater than Retail Price (₵${retail.toStringAsFixed(2)}).'),
+                        backgroundColor: Colors.red,
+                      ),
+                    );
+                    return;
+                  }
+
                   setState(() => isUploading = true);
                   
-                  String finalImageUrl = 'assets/images/meat_art.jpg';
+                  String finalImageUrl = 'assets/images/cos1.jpg';
                   
                   if (imageBytes != null && imageName != null) {
                     final uploadedUrl = await ref.read(productsFutureProvider.notifier).uploadImage(
@@ -1234,17 +1633,49 @@ class _InventoryControlScreenState extends ConsumerState<InventoryControlScreen>
                   String finalName = nameController.text;
 
                   final String validUuid = UuidUtils.generate();
+                  final double rawStock = double.tryParse(stockController.text) ?? 0.0;
+                  final double pcsPerPackVal = double.tryParse(pcsPerPackController.text) ?? 12.0;
+                  final double packsPerBoxVal = double.tryParse(packsPerBoxController.text) ?? 10.0;
+                  final double totalPcsPerBoxVal = hasPacks ? (pcsPerPackVal * packsPerBoxVal) : pcsPerPackVal;
+
+                  double calculatedPcs = rawStock;
+                  if (selectedUnit == WeightUnit.pack) {
+                    calculatedPcs = rawStock * pcsPerPackVal;
+                  } else if (selectedUnit == WeightUnit.box) {
+                    calculatedPcs = rawStock * totalPcsPerBoxVal;
+                  }
+
+                  final double rawAlert = double.tryParse(alertThresholdController.text) ?? 2.0;
+                  double calculatedAlertPcs = rawAlert;
+                  if (alertUnit == WeightUnit.pack) {
+                    calculatedAlertPcs = rawAlert * pcsPerPackVal;
+                  } else if (alertUnit == WeightUnit.box) {
+                    calculatedAlertPcs = rawAlert * totalPcsPerBoxVal;
+                  }
+
+                  final String finalSize = hasSize
+                      ? (selectedSize == 'Custom' ? customSizeController.text.trim() : selectedSize)
+                      : 'Standard';
 
                   final newProduct = Product(
                     id: validUuid,
                     name: finalName,
+                    size: finalSize,
+                    sku: (hasBarcode && skuController.text.trim().isNotEmpty) ? skuController.text.trim() : null,
                     retailPrice: double.tryParse(retailPriceController.text) ?? 0.0,
                     wholesalePrice: double.tryParse(wholesalePriceController.text) ?? 0.0,
                     costPrice: double.tryParse(costPriceController.text) ?? 0.0,
                     category: selectedCategory == 'Other' ? otherCategoryController.text : selectedCategory,
                     imageUrl: finalImageUrl,
-                    stockQuantity: double.tryParse(stockController.text) ?? 0.0,
+                    stockQuantity: calculatedPcs,
+                    hasPacks: hasPacks,
+                    hasBoxes: hasBoxes,
+                    pcsPerPack: pcsPerPackVal,
+                    packsPerBox: packsPerBoxVal,
+                    pcsPerBox: totalPcsPerBoxVal,
                     unit: selectedUnit.name,
+                    lowStockThreshold: calculatedAlertPcs,
+                    minStoreStock: calculatedAlertPcs,
                     isUnlimited: isUnlimited,
                   );
                   await ref.read(productsFutureProvider.notifier).addProduct(newProduct);
@@ -1269,9 +1700,23 @@ class _InventoryControlScreenState extends ConsumerState<InventoryControlScreen>
   void _showEditProductDialog(BuildContext context, WidgetRef ref, Product product) {
     final formKey = GlobalKey<FormState>();
     final nameController = TextEditingController(text: product.name);
+    final skuController = TextEditingController(text: product.sku ?? '');
     final retailPriceController = TextEditingController(text: product.retailPrice.toString());
     final wholesalePriceController = TextEditingController(text: product.wholesalePrice.toString());
     final costPriceController = TextEditingController(text: product.costPrice.toString());
+    final pcsPerPackController = TextEditingController(text: product.pcsPerPack.toInt().toString());
+    final packsPerBoxController = TextEditingController(text: product.packsPerBox.toInt().toString());
+    final currentPcsPerBox = product.totalPcsPerBox;
+    
+    final double initialAlertBoxes = product.lowStockThreshold / currentPcsPerBox;
+    final alertThresholdController = TextEditingController(
+      text: initialAlertBoxes % 1 == 0 ? initialAlertBoxes.toInt().toString() : initialAlertBoxes.toStringAsFixed(1)
+    );
+    WeightUnit alertUnit = WeightUnit.box; // Boxes default as requested
+    bool hasBarcode = product.sku != null && product.sku!.trim().isNotEmpty;
+    bool hasPacks = product.hasPacks;
+    bool hasBoxes = product.hasBoxes;
+
     final otherCategoryController = TextEditingController();
     final theme = Theme.of(context);
     
@@ -1288,10 +1733,16 @@ class _InventoryControlScreenState extends ConsumerState<InventoryControlScreen>
     String? imageName;
     bool isUploading = false;
 
+    final standardSizes = ['Big', 'Medium', 'Small', 'Mini', 'Large', 'Extra Large', 'Custom'];
+    bool hasSize = product.size != null && product.size!.trim().isNotEmpty && product.size != 'Standard';
+    String selectedSize = (hasSize && standardSizes.contains(product.size)) ? product.size! : (hasSize ? 'Custom' : 'Medium');
+    final customSizeController = TextEditingController(text: (hasSize && !standardSizes.contains(product.size)) ? product.size : '');
+
     showDialog(
       context: context,
       builder: (context) => StatefulBuilder(
         builder: (context, setState) => AlertDialog(
+          insetPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 16),
           scrollable: true,
           shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(AppRadius.l)),
           title: Text('Edit Product: ${product.name}'),
@@ -1327,9 +1778,7 @@ class _InventoryControlScreenState extends ConsumerState<InventoryControlScreen>
                           borderRadius: BorderRadius.circular(AppRadius.m),
                           child: imageBytes != null
                               ? Image.memory(imageBytes!, fit: BoxFit.cover)
-                              : (product.imageUrl.startsWith('http')
-                                  ? Image.network(product.imageUrl, fit: BoxFit.cover)
-                                  : Image.asset(product.imageUrl, fit: BoxFit.cover)),
+                              : AppCachedImage(imageUrl: product.imageUrl, fit: BoxFit.cover),
                         ),
                       ),
                     ),
@@ -1342,11 +1791,56 @@ class _InventoryControlScreenState extends ConsumerState<InventoryControlScreen>
                     isName: true,
                     validator: (v) => (v == null || v.isEmpty) ? 'Required' : null,
                   ),
+                  const SizedBox(height: AppSpacing.s),
+                  SwitchListTile(
+                    title: const Text('Barcode Available', style: TextStyle(fontSize: 13, fontWeight: FontWeight.bold)),
+                    subtitle: Text(hasBarcode ? 'Product has a barcode/SKU to scan' : 'No barcode for this product', style: const TextStyle(fontSize: 11)),
+                    value: hasBarcode,
+                    onChanged: (v) => setState(() {
+                      hasBarcode = v;
+                      if (!hasBarcode) skuController.clear();
+                    }),
+                    activeThumbColor: theme.colorScheme.primary,
+                    dense: true,
+                    contentPadding: EdgeInsets.zero,
+                  ),
+                  if (hasBarcode) ...[
+                    const SizedBox(height: AppSpacing.s),
+                    Row(
+                      children: [
+                        Expanded(
+                          child: _buildFormTextField(
+                            context: context,
+                            controller: skuController,
+                            label: 'SKU / Barcode Number',
+                            hint: 'Type or scan barcode...',
+                            icon: Icons.qr_code_scanner,
+                          ),
+                        ),
+                        const SizedBox(width: 8),
+                        IconButton(
+                          icon: const Icon(Icons.camera_alt_outlined),
+                          tooltip: 'Scan Barcode with Camera',
+                          onPressed: () {
+                            CameraBarcodeScannerDialog.show(
+                              context,
+                              title: 'Scan Barcode into SKU',
+                              onScanned: (raw) {
+                                skuController.text = raw;
+                                return 'SKU captured: $raw';
+                              },
+                            );
+                          },
+                        ),
+                      ],
+                    ),
+                  ],
                   const SizedBox(height: 16),
                   DropdownButtonFormField<String>(
                     initialValue: selectedCategory,
+                    isExpanded: true,
                     decoration: const InputDecoration(labelText: 'Category'),
-                    items: categories.map((c) => DropdownMenuItem(value: c, child: Text(c))).toList(),
+                    items: categories.map((c) => DropdownMenuItem(value: c, child: Text(c, overflow: TextOverflow.ellipsis))).toList(),
                     onChanged: (v) => setState(() => selectedCategory = v!),
                   ),
                   if (selectedCategory == 'Other') ...[
@@ -1366,7 +1860,7 @@ class _InventoryControlScreenState extends ConsumerState<InventoryControlScreen>
                         child: _buildFormTextField(
                           context: context,
                           controller: retailPriceController, 
-                          label: 'Retail Price', 
+                          label: 'Retail', 
                           prefix: '₵ ',
                           keyboardType: const TextInputType.numberWithOptions(decimal: true),
                           onTap: () {
@@ -1376,7 +1870,10 @@ class _InventoryControlScreenState extends ConsumerState<InventoryControlScreen>
                           },
                           validator: (v) {
                             if (v == null || v.isEmpty) return 'Required';
-                            if (double.tryParse(v) == null) return 'Invalid price';
+                            final val = double.tryParse(v);
+                            if (val == null) return 'Invalid price';
+                            final cost = double.tryParse(costPriceController.text) ?? 0.0;
+                            if (cost > 0 && val < cost) return '< Cost';
                             return null;
                           },
                         ),
@@ -1386,7 +1883,7 @@ class _InventoryControlScreenState extends ConsumerState<InventoryControlScreen>
                         child: _buildFormTextField(
                           context: context,
                           controller: wholesalePriceController, 
-                          label: 'Wholesale Price', 
+                          label: 'Wholesale', 
                           prefix: '₵ ',
                           keyboardType: const TextInputType.numberWithOptions(decimal: true),
                           onTap: () {
@@ -1396,7 +1893,10 @@ class _InventoryControlScreenState extends ConsumerState<InventoryControlScreen>
                           },
                           validator: (v) {
                             if (v == null || v.isEmpty) return 'Required';
-                            if (double.tryParse(v) == null) return 'Invalid price';
+                            final val = double.tryParse(v);
+                            if (val == null) return 'Invalid price';
+                            final retail = double.tryParse(retailPriceController.text) ?? 0.0;
+                            if (retail > 0 && val > retail) return '> Retail';
                             return null;
                           },
                         ),
@@ -1406,7 +1906,7 @@ class _InventoryControlScreenState extends ConsumerState<InventoryControlScreen>
                         child: _buildFormTextField(
                           context: context,
                           controller: costPriceController, 
-                          label: 'Cost Price', 
+                          label: 'Cost', 
                           prefix: '₵ ',
                           keyboardType: const TextInputType.numberWithOptions(decimal: true),
                           onTap: () {
@@ -1416,8 +1916,128 @@ class _InventoryControlScreenState extends ConsumerState<InventoryControlScreen>
                           },
                           validator: (v) {
                             if (v == null || v.isEmpty) return 'Required';
-                            if (double.tryParse(v) == null) return 'Invalid price';
+                            final val = double.tryParse(v);
+                            if (val == null) return 'Invalid price';
+                            final retail = double.tryParse(retailPriceController.text) ?? 0.0;
+                            if (retail > 0 && val > retail) return '> Retail';
                             return null;
+                          },
+                        ),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 16),
+                  const Align(
+                    alignment: Alignment.centerLeft,
+                    child: Text('Packaging Options & Units:', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 13)),
+                  ),
+                  const SizedBox(height: 4),
+                  Wrap(
+                    crossAxisAlignment: WrapCrossAlignment.center,
+                    spacing: 4,
+                    runSpacing: 0,
+                    children: [
+                      Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: const [
+                          Checkbox(value: true, onChanged: null),
+                          Text('1. Pcs (Default)', style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold)),
+                        ],
+                      ),
+                      Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          Checkbox(
+                            value: hasPacks,
+                            onChanged: (v) => setState(() => hasPacks = v ?? false),
+                          ),
+                          const Text('2. Packs', style: TextStyle(fontSize: 12)),
+                        ],
+                      ),
+                      Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          Checkbox(
+                            value: hasBoxes,
+                            onChanged: (v) => setState(() => hasBoxes = v ?? false),
+                          ),
+                          const Text('3. Boxes', style: TextStyle(fontSize: 12)),
+                        ],
+                      ),
+                    ],
+                  ),
+                  if (hasPacks || hasBoxes) ...[
+                    const SizedBox(height: 8),
+                    Row(
+                      children: [
+                        if (hasPacks)
+                          Expanded(
+                            child: _buildFormTextField(
+                              context: context,
+                              controller: pcsPerPackController,
+                              label: 'Pcs per Pack',
+                              hint: 'e.g. 12',
+                              keyboardType: const TextInputType.numberWithOptions(decimal: true),
+                              validator: (v) {
+                                if (!hasPacks) return null;
+                                if (v == null || v.isEmpty) return 'Required';
+                                if (double.tryParse(v) == null) return 'Invalid';
+                                return null;
+                              },
+                            ),
+                          ),
+                        if (hasPacks && hasBoxes) const SizedBox(width: AppSpacing.s),
+                        if (hasBoxes)
+                          Expanded(
+                            child: _buildFormTextField(
+                              context: context,
+                              controller: packsPerBoxController,
+                              label: hasPacks ? 'Packs per Box' : 'Pcs per Box',
+                              hint: hasPacks ? 'e.g. 10' : 'e.g. 120',
+                              keyboardType: const TextInputType.numberWithOptions(decimal: true),
+                              validator: (v) {
+                                if (!hasBoxes) return null;
+                                if (v == null || v.isEmpty) return 'Required';
+                                if (double.tryParse(v) == null) return 'Invalid';
+                                return null;
+                              },
+                            ),
+                          ),
+                      ],
+                    ),
+                  ],
+                  const SizedBox(height: 16),
+                  Row(
+                    children: [
+                      Expanded(
+                        flex: 3,
+                        child: _buildFormTextField(
+                          context: context,
+                          controller: alertThresholdController,
+                          label: 'Stock Alert Threshold',
+                          hint: 'e.g. 2 Boxes',
+                          keyboardType: const TextInputType.numberWithOptions(decimal: true),
+                          validator: (v) {
+                            if (v == null || v.isEmpty) return 'Required';
+                            if (double.tryParse(v) == null) return 'Invalid';
+                            return null;
+                          },
+                        ),
+                      ),
+                      const SizedBox(width: 8),
+                      Expanded(
+                        flex: 2,
+                        child: DropdownButtonFormField<WeightUnit>(
+                          initialValue: alertUnit,
+                          isExpanded: true,
+                          decoration: const InputDecoration(labelText: 'Alert Unit'),
+                          items: const [
+                            DropdownMenuItem(value: WeightUnit.pcs, child: Text('1. PCS', overflow: TextOverflow.ellipsis)),
+                            DropdownMenuItem(value: WeightUnit.pack, child: Text('2. PACKS', overflow: TextOverflow.ellipsis)),
+                            DropdownMenuItem(value: WeightUnit.box, child: Text('3. BOXES', overflow: TextOverflow.ellipsis)),
+                          ],
+                          onChanged: (u) {
+                            if (u != null) setState(() => alertUnit = u);
                           },
                         ),
                       ),
@@ -1433,6 +2053,49 @@ class _InventoryControlScreenState extends ConsumerState<InventoryControlScreen>
                     contentPadding: EdgeInsets.zero,
                     dense: true,
                   ),
+                  const SizedBox(height: AppSpacing.s),
+                  SwitchListTile(
+                    title: const Text('Enable Size / Variant', style: TextStyle(fontSize: 13, fontWeight: FontWeight.bold)),
+                    subtitle: Text(hasSize ? 'Size: ${selectedSize == 'Custom' ? (customSizeController.text.isEmpty ? 'Custom' : customSizeController.text) : selectedSize}' : 'Default Size: Standard', style: const TextStyle(fontSize: 11)),
+                    value: hasSize, 
+                    onChanged: (v) => setState(() => hasSize = v),
+                    activeThumbColor: theme.colorScheme.primary,
+                    dense: true,
+                    contentPadding: EdgeInsets.zero,
+                  ),
+                  if (hasSize) ...[
+                    const SizedBox(height: 4),
+                    Row(
+                      children: [
+                        Expanded(
+                          child: DropdownButtonFormField<String>(
+                            initialValue: standardSizes.contains(selectedSize) ? selectedSize : 'Custom',
+                            isExpanded: true,
+                            decoration: const InputDecoration(
+                              labelText: 'Select Size',
+                              prefixIcon: Icon(Icons.straighten_rounded),
+                            ),
+                            items: standardSizes.map((s) => DropdownMenuItem(value: s, child: Text(s, overflow: TextOverflow.ellipsis))).toList(),
+                            onChanged: (v) {
+                              if (v != null) setState(() => selectedSize = v);
+                            },
+                          ),
+                        ),
+                        if (selectedSize == 'Custom') ...[
+                          const SizedBox(width: AppSpacing.s),
+                          Expanded(
+                            child: _buildFormTextField(
+                              context: context,
+                              controller: customSizeController,
+                              label: 'Custom Size',
+                              hint: 'e.g. 500ml, 100g, XL',
+                              validator: (v) => (hasSize && selectedSize == 'Custom' && (v == null || v.trim().isEmpty)) ? 'Required' : null,
+                            ),
+                          ),
+                        ],
+                      ],
+                    ),
+                  ],
                 ],
               ),
             ),
@@ -1445,6 +2108,30 @@ class _InventoryControlScreenState extends ConsumerState<InventoryControlScreen>
             ElevatedButton(
               onPressed: isUploading ? null : () async {
                 if (formKey.currentState!.validate()) {
+                  final double retail = double.tryParse(retailPriceController.text) ?? 0.0;
+                  final double wholesale = double.tryParse(wholesalePriceController.text) ?? 0.0;
+                  final double cost = double.tryParse(costPriceController.text) ?? 0.0;
+
+                  if (cost > 0 && retail < cost) {
+                    ScaffoldMessenger.of(context).showSnackBar(
+                      SnackBar(
+                        content: Text('⚠️ Retail Price (₵${retail.toStringAsFixed(2)}) cannot be less than Cost Price (₵${cost.toStringAsFixed(2)}).'),
+                        backgroundColor: Colors.red,
+                      ),
+                    );
+                    return;
+                  }
+
+                  if (retail > 0 && wholesale > retail) {
+                    ScaffoldMessenger.of(context).showSnackBar(
+                      SnackBar(
+                        content: Text('⚠️ Wholesale Price (₵${wholesale.toStringAsFixed(2)}) cannot be greater than Retail Price (₵${retail.toStringAsFixed(2)}).'),
+                        backgroundColor: Colors.red,
+                      ),
+                    );
+                    return;
+                  }
+
                   setState(() => isUploading = true);
 
                   String finalImageUrl = product.imageUrl;
@@ -1459,12 +2146,37 @@ class _InventoryControlScreenState extends ConsumerState<InventoryControlScreen>
                     }
                   }
 
+                  final double pcsPerPackVal = double.tryParse(pcsPerPackController.text) ?? 12.0;
+                  final double packsPerBoxVal = double.tryParse(packsPerBoxController.text) ?? 10.0;
+                  final double totalPcsPerBoxVal = hasPacks ? (pcsPerPackVal * packsPerBoxVal) : pcsPerPackVal;
+
+                  final double rawAlert = double.tryParse(alertThresholdController.text) ?? 2.0;
+                  double calculatedAlertPcs = rawAlert;
+                  if (alertUnit == WeightUnit.pack) {
+                    calculatedAlertPcs = rawAlert * pcsPerPackVal;
+                  } else if (alertUnit == WeightUnit.box) {
+                    calculatedAlertPcs = rawAlert * totalPcsPerBoxVal;
+                  }
+
+                  final String finalSize = hasSize
+                      ? (selectedSize == 'Custom' ? customSizeController.text.trim() : selectedSize)
+                      : 'Standard';
+
                   final updated = product.copyWith(
                     name: nameController.text,
+                    sku: (hasBarcode && skuController.text.trim().isNotEmpty) ? skuController.text.trim() : null,
+                    size: finalSize,
                     retailPrice: double.tryParse(retailPriceController.text),
                     wholesalePrice: double.tryParse(wholesalePriceController.text),
                     costPrice: double.tryParse(costPriceController.text),
                     category: selectedCategory == 'Other' ? otherCategoryController.text : selectedCategory,
+                    hasPacks: hasPacks,
+                    hasBoxes: hasBoxes,
+                    pcsPerPack: pcsPerPackVal,
+                    packsPerBox: packsPerBoxVal,
+                    pcsPerBox: totalPcsPerBoxVal,
+                    lowStockThreshold: calculatedAlertPcs,
+                    minStoreStock: calculatedAlertPcs,
                     imageUrl: finalImageUrl,
                     isUnlimited: isUnlimited,
                   );
@@ -1505,7 +2217,9 @@ class _InventoryControlScreenState extends ConsumerState<InventoryControlScreen>
         hintText: hint,
         prefixText: prefix,
         suffixText: suffix,
-        prefixIcon: icon != null ? Icon(icon) : null,
+        prefixIcon: icon != null ? Icon(icon, size: 20) : null,
+        isDense: true,
+        contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 12),
       ),
       keyboardType: keyboardType,
       onChanged: onChanged,
@@ -1560,19 +2274,11 @@ class _InventoryControlScreenState extends ConsumerState<InventoryControlScreen>
                           ),
                           child: ClipRRect(
                             borderRadius: BorderRadius.circular(AppRadius.s),
-                            child: product.imageUrl.isEmpty
-                                ? const Icon(Icons.image)
-                                : (product.imageUrl.startsWith('assets/') && product.imageUrl.isNotEmpty)
-                                    ? Image.asset(
-                                        product.imageUrl, 
-                                        fit: BoxFit.cover,
-                                        errorBuilder: (_, _, _) => const Icon(Icons.image),
-                                      )
-                                    : Image.network(
-                                        product.imageUrl, 
-                                        fit: BoxFit.cover, 
-                                        errorBuilder: (context, error, stackTrace) => const Icon(Icons.image),
-                                      ),
+                            child: AppCachedImage(
+                              imageUrl: product.imageUrl,
+                              fit: BoxFit.cover,
+                              errorBuilder: (_) => const Icon(Icons.image),
+                            ),
                           ),
                         ),
                         const SizedBox(width: AppSpacing.m),
@@ -1616,6 +2322,7 @@ class _InventoryControlScreenState extends ConsumerState<InventoryControlScreen>
                                   Expanded(
                                     child: Column(
                                       crossAxisAlignment: CrossAxisAlignment.start,
+                                      mainAxisSize: MainAxisSize.min,
                                       children: [
                                         FittedBox(
                                           fit: BoxFit.scaleDown,
@@ -1633,40 +2340,48 @@ class _InventoryControlScreenState extends ConsumerState<InventoryControlScreen>
                                     ),
                                   ),
                                   const SizedBox(width: 4),
-                                  Column(
-                                    crossAxisAlignment: CrossAxisAlignment.end,
-                                    mainAxisSize: MainAxisSize.min,
-                                    children: [
-                                      Container(
-                                        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-                                        decoration: BoxDecoration(
-                                          color: (product.isUnlimited ? Colors.blue : (isLowStock ? Colors.red : Colors.green)).withValues(alpha: 0.1),
-                                          borderRadius: BorderRadius.circular(4),
+                                  Flexible(
+                                    child: Column(
+                                      crossAxisAlignment: CrossAxisAlignment.end,
+                                      mainAxisSize: MainAxisSize.min,
+                                      children: [
+                                        Container(
+                                          padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 3),
+                                          decoration: BoxDecoration(
+                                            color: (product.isUnlimited ? Colors.blue : (isLowStock ? Colors.red : Colors.green)).withValues(alpha: 0.1),
+                                            borderRadius: BorderRadius.circular(4),
+                                          ),
+                                          child: Text(
+                                            product.stockControlStoreDisplay, 
+                                            style: TextStyle(fontWeight: FontWeight.bold, fontSize: 11, color: product.isUnlimited ? Colors.blue : (isLowStock ? Colors.red : Colors.green)),
+                                            overflow: TextOverflow.ellipsis,
+                                            maxLines: 1,
+                                          ),
                                         ),
-                                        child: Text(
-                                          product.isUnlimited 
-                                            ? 'UNLIMITED' 
-                                            : '${product.stockQuantity.toStringAsFixed(product.unit == 'unit' ? 0 : 1)}${product.unit == 'unit' ? (product.category == 'CHICKEN' ? " birds" : " pcs") : product.unit}', 
-                                          style: TextStyle(fontWeight: FontWeight.bold, fontSize: 12, color: product.isUnlimited ? Colors.blue : (isLowStock ? Colors.red : Colors.green))
-                                        ),
-                                      ),
-                                      if (hasIncoming)
-                                        Padding(
-                                          padding: const EdgeInsets.only(top: 2),
-                                          child: Text('+${pendingWeight.toStringAsFixed(1)}${product.unit} coming', 
-                                            style: TextStyle(fontSize: 8, fontWeight: FontWeight.bold, color: Colors.blue.shade700)),
-                                        )
-                                      else if (product.dailyStockAdded > 0 && 
-                                          product.lastStockUpdate != null && 
-                                          product.lastStockUpdate!.year == DateTime.now().year &&
-                                          product.lastStockUpdate!.month == DateTime.now().month &&
-                                          product.lastStockUpdate!.day == DateTime.now().day)
-                                        Padding(
-                                          padding: const EdgeInsets.only(top: 2),
-                                          child: Text('+${product.dailyStockAdded}${product.unit} today', 
-                                            style: const TextStyle(fontSize: 8, fontWeight: FontWeight.bold, color: Colors.blue)),
-                                        ),
-                                    ],
+                                        if (hasIncoming)
+                                          Padding(
+                                            padding: const EdgeInsets.only(top: 2),
+                                            child: Text('+${pendingWeight.toStringAsFixed(1)}${product.unit} coming', 
+                                              style: TextStyle(fontSize: 8, fontWeight: FontWeight.bold, color: Colors.blue.shade700),
+                                              overflow: TextOverflow.ellipsis,
+                                              maxLines: 1,
+                                            ),
+                                          )
+                                        else if (product.dailyStockAdded > 0 && 
+                                            product.lastStockUpdate != null && 
+                                            product.lastStockUpdate!.year == DateTime.now().year &&
+                                            product.lastStockUpdate!.month == DateTime.now().month &&
+                                            product.lastStockUpdate!.day == DateTime.now().day)
+                                          Padding(
+                                            padding: const EdgeInsets.only(top: 2),
+                                            child: Text('+${product.dailyStockAdded}${product.unit} today', 
+                                              style: const TextStyle(fontSize: 8, fontWeight: FontWeight.bold, color: Colors.blue),
+                                              overflow: TextOverflow.ellipsis,
+                                              maxLines: 1,
+                                            ),
+                                          ),
+                                      ],
+                                    ),
                                   ),
                                 ],
                               ),
@@ -1683,21 +2398,15 @@ class _InventoryControlScreenState extends ConsumerState<InventoryControlScreen>
                     Expanded(
                       child: Stack(
                         children: [
-                          product.imageUrl.isEmpty
-                              ? Container(color: Theme.of(context).colorScheme.surfaceContainerHighest, child: const Center(child: Icon(Icons.image)))
-                              : (product.imageUrl.startsWith('assets/') && product.imageUrl.isNotEmpty)
-                                  ? Image.asset(
-                                      product.imageUrl, 
-                                      fit: BoxFit.cover, 
-                                      width: double.infinity,
-                                      errorBuilder: (_, _, _) => const Center(child: Icon(Icons.image)),
-                                    )
-                                  : Image.network(
-                                      product.imageUrl, 
-                                      fit: BoxFit.cover, 
-                                      width: double.infinity, 
-                                      errorBuilder: (context, error, stackTrace) => const Center(child: Icon(Icons.image)),
-                                    ),
+                          AppCachedImage(
+                            imageUrl: product.imageUrl,
+                            fit: BoxFit.cover,
+                            width: double.infinity,
+                            errorBuilder: (_) => Container(
+                              color: Theme.of(context).colorScheme.surfaceContainerHighest,
+                              child: const Center(child: Icon(Icons.image)),
+                            ),
+                          ),
                           if (isLowStock)
                             Positioned(
                               top: 8,
@@ -1736,9 +2445,7 @@ class _InventoryControlScreenState extends ConsumerState<InventoryControlScreen>
                                 padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
                                 decoration: BoxDecoration(color: Colors.orange, borderRadius: BorderRadius.circular(4)),
                                 child: Text(
-                                  product.promoCustomerTarget == PromoCustomerTarget.regularsOnly 
-                                    ? '-${product.discountPercentage % 1 == 0 ? product.discountPercentage.toInt() : product.discountPercentage}% REGULARS' 
-                                    : '-${product.discountPercentage % 1 == 0 ? product.discountPercentage.toInt() : product.discountPercentage}% PROMO', 
+                                  '${product.discountPercentage % 1 == 0 ? product.discountPercentage.toInt() : product.discountPercentage}% OFF', 
                                   style: const TextStyle(color: Colors.white, fontSize: 10, fontWeight: FontWeight.bold)
                                 ),
                               ),
@@ -1766,6 +2473,20 @@ class _InventoryControlScreenState extends ConsumerState<InventoryControlScreen>
                                   overflow: TextOverflow.ellipsis,
                                 ),
                               ),
+                              if (product.size != null && product.size!.isNotEmpty) ...[
+                                const SizedBox(width: 4),
+                                Container(
+                                  padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 1.5),
+                                  decoration: BoxDecoration(
+                                    color: Colors.blue.shade700,
+                                    borderRadius: BorderRadius.circular(4),
+                                  ),
+                                  child: Text(
+                                    product.size!.toUpperCase(),
+                                    style: const TextStyle(color: Colors.white, fontSize: 9, fontWeight: FontWeight.bold),
+                                  ),
+                                ),
+                              ],
                               if (hasIncoming) ...[
                                 const SizedBox(width: 8),
                                 Text('+${pendingWeight.toStringAsFixed(1)}${product.unit} IN TRANSIT', 
@@ -1827,9 +2548,7 @@ class _InventoryControlScreenState extends ConsumerState<InventoryControlScreen>
                                 mainAxisSize: MainAxisSize.min,
                                 children: [
                                   Text(
-                                    product.isUnlimited 
-                                      ? 'UNLIMITED' 
-                                      : '${product.stockQuantity.toStringAsFixed(product.unit == 'unit' ? 0 : 1)}${product.unit == 'unit' ? (product.category == 'CHICKEN' ? " birds" : " pcs") : product.unit}', 
+                                    product.stockControlStoreDisplay, 
                                     style: TextStyle(fontWeight: FontWeight.bold, color: product.isUnlimited ? Colors.blue : (isLowStock ? Colors.red : Colors.green))
                                   ),
                                   if (hasIncoming)
@@ -2100,16 +2819,16 @@ class _InventoryControlScreenState extends ConsumerState<InventoryControlScreen>
                 if (formKey.currentState!.validate()) {
                   double change = double.tryParse(stockController.text) ?? 0.0;
                   if (change != 0) {
-                    // Normalize to master unit (kg or unit)
-                    if (product.unit == 'unit') {
-                      // If master is unit, we just add the absolute value
-                      ref.read(productsFutureProvider.notifier).updateStock(product.id, change);
-                    } else {
-                      // If master is weight (kg), we convert from selected unit to kg
-                      if (selectedUnit == WeightUnit.g) change = WeightConverter.fromG(change);
-                      if (selectedUnit == WeightUnit.lb) change = WeightConverter.toKg(change);
-                      ref.read(productsFutureProvider.notifier).updateStock(product.id, change);
+                    if (selectedUnit == WeightUnit.box) {
+                      change = change * product.totalPcsPerBox;
+                    } else if (selectedUnit == WeightUnit.pack) {
+                      change = change * product.pcsPerPack;
+                    } else if (selectedUnit == WeightUnit.g) {
+                      change = WeightConverter.fromG(change);
+                    } else if (selectedUnit == WeightUnit.lb) {
+                      change = WeightConverter.toKg(change);
                     }
+                    ref.read(productsFutureProvider.notifier).updateStock(product.id, change);
                     Navigator.pop(context);
                   }
                 }

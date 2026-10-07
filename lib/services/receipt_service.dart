@@ -9,6 +9,51 @@ import '../models/salary_model.dart';
 import '../models/expense_model.dart';
 import '../core/utils.dart';
 
+class AppreciationSet {
+  final String akanTwi;
+  final String hausaQuran;
+  final String bible;
+
+  const AppreciationSet({
+    required this.akanTwi,
+    required this.hausaQuran,
+    required this.bible,
+  });
+}
+
+const List<AppreciationSet> _appreciationSets = [
+  AppreciationSet(
+    akanTwi: '• Yɛdaase paaa! Onyame nhyira wo nsa ano adwuma.',
+    hausaQuran: '• Nagode kwarai! "Lain shakartum la-azidannakum" (Qur\'an 14:7)',
+    bible: '• "The Lord bless you & keep you; make His face shine upon you." (Num 6:24-25)',
+  ),
+  AppreciationSet(
+    akanTwi: '• Medaase kɛseɛ! Onyame adom ne Ne nhyira nnɔɔso mma wo.',
+    hausaQuran: '• Mungode sosai! "Fathkuruni adhkurkum washkuru li" (Qur\'an 2:152)',
+    bible: '• "God is able to bless you abundantly in all good things." (2 Cor 9:8)',
+  ),
+  AppreciationSet(
+    akanTwi: '• Yɛdaase bɔkɔɔ! Onyame mfa asomdwoeɛ ne ahomka nhyira wo fifidie.',
+    hausaQuran: '• Nagode sosai! "Hal jaza\'ul-ihsani illal-ihsan" (Qur\'an 55:60)',
+    bible: '• "Surely, Lord, You bless the righteous & surround them with favor." (Psalm 5:12)',
+  ),
+  AppreciationSet(
+    akanTwi: '• Yɛdaase waa! Onyame mmue wo nkɔsoɔ ne ahotɔ kwan mu.',
+    hausaQuran: '• Nagode kwarai! "Wa yarzuqhu min haithu la yahtasib" (Qur\'an 65:3)',
+    bible: '• "Plans to prosper you, to give you hope and a peaceful future." (Jer 29:11)',
+  ),
+  AppreciationSet(
+    akanTwi: '• Medaase paaa! Onyame adaworoma nnyae wo so koraa.',
+    hausaQuran: '• Mungode kwarai! "Wa sanajzish-shakirin" (Qur\'an 3:145)',
+    bible: '• "Surely Your goodness and mercy shall follow you all your days." (Psalm 23:6)',
+  ),
+];
+
+AppreciationSet getAppreciationSet(String saleId) {
+  final index = saleId.hashCode.abs() % _appreciationSets.length;
+  return _appreciationSets[index];
+}
+
 class ReceiptService {
   static Future<pw.Document> generateReceiptDocument(SaleRecord sale) async {
     final doc = pw.Document();
@@ -29,6 +74,8 @@ class ReceiptService {
       pw.Page(
         pageFormat: PdfPageFormat.roll80,
         build: (pw.Context context) {
+          final set = getAppreciationSet(sale.id);
+
           return pw.Column(
             crossAxisAlignment: pw.CrossAxisAlignment.start,
             children: [
@@ -36,8 +83,7 @@ class ReceiptService {
                 child: pw.Column(
                   children: [
                     pw.Text('CITY COSMETICS', style: pw.TextStyle(font: boldFont, fontSize: 18)),
-                    pw.Text('BEAUTY & COSMETICS POS', style: pw.TextStyle(font: font)),
-                    pw.Text('Location: Sunyani, directly opposite Sweet Touch Restaurant', 
+                    pw.Text('Location: Sunyani, Directly Opposite Sweet Touch Restaurant', 
                       style: pw.TextStyle(font: font, fontSize: 7), textAlign: pw.TextAlign.center),
                     pw.Text('Tel: 0542562486', 
                       style: pw.TextStyle(font: font, fontSize: 7)),
@@ -45,8 +91,8 @@ class ReceiptService {
                   ],
                 ),
               ),
-              pw.Text('Invoice: ${sale.id}', style: pw.TextStyle(font: font, fontSize: 9)),
-              pw.Text('Date: ${DateFormat('yyyy-MM-dd HH:mm').format(sale.timestamp)}', style: pw.TextStyle(font: font, fontSize: 9)),
+              pw.Text('Invoice No: ${sale.id}', style: pw.TextStyle(font: font, fontSize: 9)),
+              pw.Text('Date: ${DateFormat('dd MMM yyyy, hh:mm a').format(sale.timestamp)}', style: pw.TextStyle(font: font, fontSize: 9)),
               pw.Text('Cashier: ${sale.cashierName}', style: pw.TextStyle(font: font, fontSize: 9)),
               if (sale.customerName != null)
                 pw.Text('Customer: ${sale.customerName} ${sale.customerPhone != null ? "(${sale.customerPhone})" : ""}', 
@@ -65,7 +111,7 @@ class ReceiptService {
                     ),
                   ),
                   child: pw.Center(
-                    child: pw.Text('*** CREDIT / DEBT SALE ***', 
+                    child: pw.Text('*** CREDIT SALE ***', 
                       style: pw.TextStyle(font: boldFont, fontSize: 10, color: PdfColors.orange900)),
                   ),
                 ),
@@ -85,14 +131,14 @@ class ReceiptService {
                       pw.Text('*** AWAITING BANK DEPOSIT ***', style: pw.TextStyle(font: boldFont, fontSize: 11, color: PdfColors.red)),
                       pw.Divider(color: PdfColors.red, thickness: 0.5),
                       pw.SizedBox(height: 5),
-                      pw.Text('Please pay into the account below:', style: pw.TextStyle(font: font, fontSize: 8, color: PdfColors.red)),
+                      pw.Text('Please make payment to the bank account below:', style: pw.TextStyle(font: font, fontSize: 8, color: PdfColors.red)),
                       pw.SizedBox(height: 4),
-                      pw.Text('Bank: UMB (Universal Merchant Bank)', style: pw.TextStyle(font: boldFont, fontSize: 8)),
+                      pw.Text('Bank: Universal Merchant Bank (UMB)', style: pw.TextStyle(font: boldFont, fontSize: 8)),
                       pw.Text('Branch: Sunyani', style: pw.TextStyle(font: font, fontSize: 8)),
                       pw.Text('Account Name: City Cosmetics Enterprise', style: pw.TextStyle(font: font, fontSize: 8)),
-                      pw.Text('Account Number: 1111069263015', style: pw.TextStyle(font: boldFont, fontSize: 10)),
+                      pw.Text('Account No: 1111069263015', style: pw.TextStyle(font: boldFont, fontSize: 10)),
                       pw.SizedBox(height: 5),
-                      pw.Text('VALID ONLY AFTER BANK VERIFICATION', style: pw.TextStyle(font: boldFont, fontSize: 7, color: PdfColors.red)),
+                      pw.Text('VALID ONLY UPON BANK VERIFICATION', style: pw.TextStyle(font: boldFont, fontSize: 7, color: PdfColors.red)),
                     ],
                   ),
                 ),
@@ -117,7 +163,7 @@ class ReceiptService {
                       ),
                       pw.SizedBox(height: 2),
                       if (sale.bankReceiptId != null)
-                        pw.Text('Bank Ref: ${sale.bankReceiptId}', style: pw.TextStyle(font: boldFont, fontSize: 9, color: PdfColors.green)),
+                        pw.Text('Bank Ref No: ${sale.bankReceiptId}', style: pw.TextStyle(font: boldFont, fontSize: 9, color: PdfColors.green)),
                       pw.Text('Receipt Uploaded & Confirmed', style: pw.TextStyle(font: font, fontSize: 8, color: PdfColors.green700)),
                     ],
                   ),
@@ -136,9 +182,10 @@ class ReceiptService {
               pw.SizedBox(height: 4),
               ...sale.items.map((item) {
                 final String unitStr = item.selectedUnit ?? item.product.unit;
-                final String qtyText = (unitStr.toLowerCase() != 'kg' && unitStr.toLowerCase() != 'unit') 
-                    ? '${item.quantity.toInt()} $unitStr' 
-                    : '${item.quantity.toInt()} pcs';
+                final String qtyFormatted = item.quantity % 1 == 0 
+                    ? item.quantity.toInt().toString() 
+                    : item.quantity.toStringAsFixed(2);
+                final String qtyText = '$qtyFormatted $unitStr';
 
                 return pw.Padding(
                   padding: const pw.EdgeInsets.symmetric(vertical: 2),
@@ -172,7 +219,6 @@ class ReceiptService {
                   ),
                 );
               }),
-              // Redundant second line removed for cleaner layout
               pw.SizedBox(height: 6),
               
               pw.Row(
@@ -181,15 +227,15 @@ class ReceiptService {
                   pw.Column(
                     crossAxisAlignment: pw.CrossAxisAlignment.end,
                     children: [
-                      _receiptRow('Sub Total', sale.totalAmount, font),
-                      _receiptRow('Net Invoice Value', sale.netInvoiceValue, font, isBold: true),
+                      _receiptRow('Subtotal', sale.totalAmount, font),
+                      _receiptRow('Total Amount', sale.netInvoiceValue, font, isBold: true),
                     ],
                   ),
                 ],
               ),
               pw.Divider(thickness: 0.5),
 
-              pw.Text('PAYMENT BREAKDOWN', style: pw.TextStyle(font: boldFont, fontSize: 8)),
+              pw.Text('PAYMENT DETAILS', style: pw.TextStyle(font: boldFont, fontSize: 8)),
               pw.SizedBox(height: 4),
 
               ...sale.payments.map((p) => pw.Padding(
@@ -197,7 +243,7 @@ class ReceiptService {
                     child: pw.Row(
                       mainAxisAlignment: pw.MainAxisAlignment.spaceBetween,
                       children: [
-                        pw.Text('METHOD: ${_formatMethod(p)}', style: pw.TextStyle(font: font, fontSize: 8)),
+                        pw.Text('Method: ${_formatMethod(p)}', style: pw.TextStyle(font: font, fontSize: 8)),
                         pw.Text('GH₵ ${p.amount.toStringAsFixed(2)}', style: pw.TextStyle(font: boldFont, fontSize: 8)),
                       ],
                     ),
@@ -208,7 +254,7 @@ class ReceiptService {
                 child: pw.Row(
                   mainAxisAlignment: pw.MainAxisAlignment.spaceBetween,
                   children: [
-                    pw.Text('Paid Amount', style: pw.TextStyle(font: boldFont, fontSize: 8)),
+                    pw.Text('Amount Paid', style: pw.TextStyle(font: boldFont, fontSize: 8)),
                     pw.Text('GH₵ ${sale.amountPaid.toStringAsFixed(2)}', style: pw.TextStyle(font: boldFont, fontSize: 8)),
                   ],
                 ),
@@ -218,8 +264,8 @@ class ReceiptService {
                 pw.Row(
                   mainAxisAlignment: pw.MainAxisAlignment.spaceBetween,
                   children: [
-                    pw.Text('BALANCE DUE (DEBT)', style: pw.TextStyle(font: boldFont, fontSize: 8, color: PdfColors.red)),
-                    pw.Text(sale.balance.toStringAsFixed(2), style: pw.TextStyle(font: boldFont, fontSize: 8, color: PdfColors.red)),
+                    pw.Text('Balance Due', style: pw.TextStyle(font: boldFont, fontSize: 8, color: PdfColors.red)),
+                    pw.Text('GH₵ ${sale.balance.toStringAsFixed(2)}', style: pw.TextStyle(font: boldFont, fontSize: 8, color: PdfColors.red)),
                   ],
                 ),
 
@@ -236,8 +282,23 @@ class ReceiptService {
               pw.Center(
                 child: pw.Column(
                   children: [
-                    pw.Text('Thank you!', style: pw.TextStyle(font: boldFont, fontSize: 8)),
+                    pw.Text('Thank you for shopping with us!', style: pw.TextStyle(font: boldFont, fontSize: 8)),
+                    pw.SizedBox(height: 4),
+                    pw.Text(set.akanTwi, style: pw.TextStyle(font: font, fontSize: 6.5, fontStyle: pw.FontStyle.italic), textAlign: pw.TextAlign.center),
+                    pw.SizedBox(height: 2),
+                    pw.Text(set.hausaQuran, style: pw.TextStyle(font: font, fontSize: 6.5, fontStyle: pw.FontStyle.italic), textAlign: pw.TextAlign.center),
+                    pw.SizedBox(height: 2),
+                    pw.Text(set.bible, style: pw.TextStyle(font: font, fontSize: 6.5, fontStyle: pw.FontStyle.italic), textAlign: pw.TextAlign.center),
+                    pw.SizedBox(height: 4),
+                    pw.Text('Goods sold are non-refundable.', style: pw.TextStyle(font: font, fontSize: 6.5, color: PdfColors.grey700)),
                   ],
+                ),
+              ),
+              pw.SizedBox(height: 6),
+              pw.Center(
+                child: pw.Text(
+                  'by techRaven • krasta1258@gmail.com',
+                  style: pw.TextStyle(font: font, fontSize: 6.5, color: PdfColors.grey700, fontStyle: pw.FontStyle.italic),
                 ),
               ),
             ],

@@ -51,7 +51,10 @@ class SupabaseUserService {
   Future<void> deleteUser(String id) async {
     await _client
         .from('users')
-        .update({'is_deleted': true})
+        .update({
+          'is_deleted': true,
+          'status': 'suspended',
+        })
         .eq('id', id);
   }
 

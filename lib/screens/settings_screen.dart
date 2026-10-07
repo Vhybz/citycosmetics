@@ -12,21 +12,22 @@ import '../services/user_provider.dart';
 import '../services/theme_provider.dart';
 import '../services/offline_sync_service.dart';
 import '../services/app_settings_provider.dart';
+import '../services/auth_provider.dart';
 import '../widgets/role_pop_scope.dart';
 
 class SettingsScreen extends ConsumerWidget {
   const SettingsScreen({super.key});
 
   static const List<Color> themeColors = [
-    AppColors.primaryMaroon,
-    Colors.black,
-    Color(0xFFE91E63), // Deep Pink
-    Color(0xFF2962FF), // Electric Blue
-    Color(0xFF00E676), // Neon Green
-    Color(0xFFFF3D00), // Vivid Orange
-    Color(0xFF7C4DFF), // Electric Violet
-    Color(0xFFFFD600), // Yellow Gold
-    Color(0xFF00B0FF), // Bright Cyan
+    Color(0xFF6B1111), // Deep Velvet Maroon
+    Color(0xFF0F172A), // Midnight Onyx Navy
+    Color(0xFFC2185B), // Deep Rose Magenta
+    Color(0xFF1D4ED8), // Rich Cobalt Sapphire
+    Color(0xFF047857), // Deep Forest Emerald
+    Color(0xFFC2410C), // Deep Crimson Amber
+    Color(0xFF6B21A8), // Deep Royal Violet
+    Color(0xFFB45309), // Deep Golden Bronze
+    Color(0xFF0E7490), // Deep Electric Teal
   ];
 
   @override
@@ -52,7 +53,7 @@ class SettingsScreen extends ConsumerWidget {
             userRole: user.activePrimaryRole.name.toUpperCase(),
             currentRoute: currentRoute,
             items: MenuService.getMenuItemsForUser(user),
-            onTap: (route) => MenuService.navigate(context, route, currentRoute),
+            onTap: (route) => MenuService.navigate(context, ref, route, currentRoute),
           ),
         ),
         body: Row(
@@ -64,7 +65,7 @@ class SettingsScreen extends ConsumerWidget {
                 userRole: user.activePrimaryRole.name.toUpperCase(),
                 currentRoute: currentRoute,
                 items: MenuService.getMenuItemsForUser(user),
-                onTap: (route) => MenuService.navigate(context, route, currentRoute),
+                onTap: (route) => MenuService.navigate(context, ref, route, currentRoute),
               ),
             Expanded(
               child: SingleChildScrollView(
@@ -157,10 +158,13 @@ class SettingsScreen extends ConsumerWidget {
                           [
                             SwitchListTile(
                               secondary: const Icon(Icons.pin_rounded),
-                              title: const Text('Use 4-Digit Security PIN'),
+                              title: const Text('Use 4-Digit Security PIN', maxLines: 1, overflow: TextOverflow.ellipsis),
                               subtitle: Text(user.isPasscodeEnabled 
                                 ? 'PIN protection active • Screen lock and fast handover enabled' 
-                                : 'PIN protection disabled'),
+                                : 'PIN protection disabled',
+                                maxLines: 2,
+                                overflow: TextOverflow.ellipsis,
+                              ),
                               value: user.isPasscodeEnabled,
                               activeThumbColor: theme.colorScheme.primary,
                               onChanged: (bool enabled) async {
@@ -247,6 +251,29 @@ class SettingsScreen extends ConsumerWidget {
                             ),
                           ],
                         ),
+                        const SizedBox(height: AppSpacing.l),
+
+                        _buildSection(
+                          context,
+                          'Danger Zone & Account Removal',
+                          Icons.warning_amber_rounded,
+                          [
+                            ListTile(
+                              leading: const Icon(Icons.delete_forever_rounded, color: Colors.red),
+                              title: const Text('Delete Account', style: TextStyle(color: Colors.red, fontWeight: FontWeight.bold)),
+                              subtitle: const Text('Permanently remove your account and all personal profile data'),
+                              trailing: ElevatedButton.icon(
+                                onPressed: () => _showDeleteAccountDialog(context, ref, user),
+                                icon: const Icon(Icons.delete_forever_rounded, size: 16),
+                                label: const Text('DELETE ACCOUNT', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 12)),
+                                style: ElevatedButton.styleFrom(
+                                  backgroundColor: Colors.red,
+                                  foregroundColor: Colors.white,
+                                ),
+                              ),
+                            ),
+                          ],
+                        ),
                         
                         const SizedBox(height: 40),
                         Center(
@@ -288,6 +315,134 @@ class SettingsScreen extends ConsumerWidget {
             child: const Text('CLEAR DATA'),
           ),
         ],
+      ),
+    );
+  }
+
+  void _showDeleteAccountDialog(BuildContext context, WidgetRef ref, UserAccount user) {
+    final confirmController = TextEditingController();
+    bool isDeleting = false;
+    String? errorMessage;
+
+    showDialog(
+      context: context,
+      barrierDismissible: false,
+      builder: (context) => StatefulBuilder(
+        builder: (context, setDialogState) => AlertDialog(
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(AppRadius.l)),
+          title: const Row(
+            children: [
+              Icon(Icons.warning_amber_rounded, color: Colors.red, size: 28),
+              SizedBox(width: 10),
+              Text('Delete Account?', style: TextStyle(fontWeight: FontWeight.bold, color: Colors.red, fontSize: 18)),
+            ],
+          ),
+          content: SingleChildScrollView(
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  'Are you sure you want to delete account "${user.name}" (${user.email})?',
+                  style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 14),
+                ),
+                const SizedBox(height: 10),
+                const Text(
+                  'Your account access will be revoked and you will be signed out immediately. Your historical sales, attendance, and audit records will remain safely preserved in the database.',
+                  style: TextStyle(fontSize: 12, color: Colors.grey),
+                ),
+                const SizedBox(height: 16),
+                Container(
+                  padding: const EdgeInsets.all(12),
+                  decoration: BoxDecoration(
+                    color: Colors.red.shade50,
+                    borderRadius: BorderRadius.circular(AppRadius.m),
+                    border: Border.all(color: Colors.red.shade200),
+                  ),
+                  child: const Row(
+                    children: [
+                      Icon(Icons.info_outline, color: Colors.red, size: 20),
+                      SizedBox(width: 8),
+                      Expanded(
+                        child: Text(
+                          'Type DELETE below to confirm account removal.',
+                          style: TextStyle(fontSize: 12, color: Colors.red, fontWeight: FontWeight.bold),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+                const SizedBox(height: 14),
+                TextField(
+                  controller: confirmController,
+                  autofocus: true,
+                  decoration: const InputDecoration(
+                    labelText: 'Type DELETE to confirm',
+                    border: OutlineInputBorder(),
+                    hintText: 'DELETE',
+                  ),
+                  onChanged: (_) => setDialogState(() {}),
+                ),
+                if (errorMessage != null) ...[
+                  const SizedBox(height: 10),
+                  Text(errorMessage!, style: const TextStyle(color: Colors.red, fontSize: 12)),
+                ],
+              ],
+            ),
+          ),
+          actions: [
+            TextButton(
+              onPressed: isDeleting ? null : () => Navigator.pop(context),
+              child: const Text('CANCEL'),
+            ),
+            ElevatedButton.icon(
+              onPressed: (confirmController.text.trim() != 'DELETE' || isDeleting)
+                  ? null
+                  : () async {
+                      setDialogState(() {
+                        isDeleting = true;
+                        errorMessage = null;
+                      });
+
+                      try {
+                        final navigator = Navigator.of(context, rootNavigator: true);
+                        final messenger = ScaffoldMessenger.of(context);
+
+                        // 1. Delete user from system/database
+                        await ref.read(userProvider.notifier).deleteUser(user.id);
+
+                        // 2. Perform global sign out
+                        await GlobalLogout.perform(ref);
+
+                        if (context.mounted) {
+                          navigator.pop(); // Close dialog
+                          Navigator.of(context).pushNamedAndRemoveUntil('/login', (route) => false);
+                          messenger.showSnackBar(
+                            const SnackBar(
+                              content: Text('Account permanently deleted.'),
+                              backgroundColor: Colors.red,
+                              duration: Duration(seconds: 4),
+                            ),
+                          );
+                        }
+                      } catch (e) {
+                        setDialogState(() {
+                          isDeleting = false;
+                          errorMessage = 'Failed to delete account: $e';
+                        });
+                      }
+                    },
+              icon: isDeleting
+                  ? const SizedBox(width: 16, height: 16, child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white))
+                  : const Icon(Icons.delete_forever_rounded, size: 18),
+              label: Text(isDeleting ? 'DELETING...' : 'DELETE MY ACCOUNT NOW'),
+              style: ElevatedButton.styleFrom(
+                backgroundColor: Colors.red,
+                foregroundColor: Colors.white,
+              ),
+            ),
+          ],
+        ),
       ),
     );
   }

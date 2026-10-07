@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/foundation.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:fl_chart/fl_chart.dart';
@@ -11,6 +12,8 @@ import '../../widgets/product_card.dart';
 import '../../widgets/cart_item_tile.dart';
 import '../../widgets/main_app_bar.dart';
 import '../../widgets/app_sidebar.dart';
+import '../../widgets/camera_barcode_scanner_dialog.dart';
+import '../../widgets/attendance_dialog.dart';
 import '../../services/cart_provider.dart';
 import '../../services/product_service.dart';
 import '../../services/transfer_provider.dart';
@@ -53,36 +56,55 @@ class _CashierPOSState extends ConsumerState<CashierPOS> {
   final String _historySearchQuery = '';
   DateTimeRange? _historyDateRange;
 
+  // Search input & USB Scanner Focus
+  final TextEditingController _posSearchController = TextEditingController();
+  final FocusNode _posSearchFocusNode = FocusNode();
+  final FocusNode _globalKeyboardFocusNode = FocusNode();
+  String _usbScanBuffer = '';
+  DateTime? _lastUsbKeyTime;
+
   // Selected customer for the current sale
   Customer? _selectedCustomer;
   String? _uploadedReceiptUrl;
   bool _applyDailyPromo = true;
+  bool _isProcessingCheckout = false;
 
   static const Map<String, List<String>> allowedCatalog = {
-    'HARD CHICKEN': [
-      'Hard Whole Chicken (Layer)', 'Hard Thigh (Layer)', 'Hard Breast (Layer)', 
-      'Hard Back (Layer)', 'Hard Wings (Layer)', 'Hard Drumsticks (Layer)', 'Gizzard'
+    'SKINCARE': [
+      'Cleanser / Face Wash', 'Toner', 'Moisturizer / Cream', 
+      'Face Serum / Oil', 'Sunscreen / SPF', 'Body Lotion / Body Butter', 
+      'Face Mask / Scrub', 'Exfoliator'
     ],
-    'SOFT CHICKEN': [
-      'Soft Whole Chicken (Broiler)', 'Soft Thigh (Broiler)', 'Soft Breast (Broiler)', 
-      'Soft Back (Broiler)', 'Soft Wings (Broiler)', 'Soft Drumsticks (Broiler)', 'Gizzard'
+    'HAIRCARE': [
+      'Shampoo', 'Conditioner', 'Hair Oil / Serum', 
+      'Hair Treatment / Mask', 'Leave-in Conditioner', 'Edge Control / Gel', 
+      'Hair Spray / Mousse', 'Wig & Weave Care'
     ],
-    'BEEF': [
-      'Standard Meat', 'Boneless', 'Cow Steak', 
-      'Liver & Lungs', 'Grounded Meat', 'Tail / Padua'
+    'FRAGRANCE': [
+      'Perfume / Eau de Parfum', 'Body Spray / Body Mist', 'Cologne / Eau de Toilette', 
+      'Roll-on Deodorant', 'Fragrance Oil / Oud', 'Room / Linen Spray'
     ],
-    'COW': [
-      'Offals / Yemadeɛ', 'Feet', 'Head'
+    'MAKEUP': [
+      'Foundation / BB Cream', 'Face Powder / Compact', 'Concealer / Contour', 
+      'Lipstick / Lip Gloss / Lip Balm', 'Mascara / Eyeliner', 'Eyeshadow Palette', 
+      'Primer / Setting Spray', 'Makeup Remover / Wipes'
     ],
-    'GOAT': ['Standard Meat', 'Boneless', 'Offals / Yemadeɛ', 'Head', 'Feet'],
-    'SHEEP': ['Standard Meat', 'Boneless', 'Offals / Yemadeɛ', 'Head', 'Feet'],
-    'PORK': [
-      'Standard Meat', 'Boneless Meat', 'Offals / Yemadeɛ', 'Pork Steak',
-      'Head', 'Ear', 'Feet', 'Liver', 'Skin'
+    'PERSONAL CARE': [
+      'Body Wash / Shower Gel', 'Soap Bar / Bath Soap', 'Hand Cream / Sanitizer', 
+      'Intimate Care', 'Bath Salts / Soaks'
     ],
-    'TURKEY': ['Whole Turkey', 'Breast', 'Thighs', 'Drumsticks', 'Wings', 'Gizzards', 'Feet'],
-    'RABBIT': ['Whole Rabbit', 'Legs', 'Saddle', 'Shoulders'],
-    'FEEDS': ['Dog Feed'],
+    'NAIL CARE': [
+      'Nail Polish / Gel', 'Nail Polish Remover', 'Cuticle Oil / Treatment', 
+      'Nail Tools / Files'
+    ],
+    'GROOMING': [
+      'Beard Oil / Balm', 'Aftershave Lotion / Balm', 'Shaving Cream / Gel', 
+      'Men\'s Face Wash / Body Wash'
+    ],
+    'ACCESSORIES': [
+      'Makeup Brushes / Sponges', 'Hair Combs / Brushes', 'Eyelashes / Eyelash Glue', 
+      'Cotton Pads / Swabs', 'Mirrors / Bags'
+    ],
   };
 
   @override
@@ -95,14 +117,52 @@ class _CashierPOSState extends ConsumerState<CashierPOS> {
   }
 
   @override
+  void dispose() {
+    _posSearchController.dispose();
+    _posSearchFocusNode.dispose();
+    _globalKeyboardFocusNode.dispose();
+    super.dispose();
+  }
+
+  void _handleGlobalKeyEvent(KeyEvent event) {
+    if (event is KeyDownEvent) {
+      final character = event.character;
+      final key = event.logicalKey;
+
+      final primaryFocus = FocusManager.instance.primaryFocus;
+      final isEditingOtherField = primaryFocus != null &&
+          primaryFocus.context?.widget is EditableText &&
+          primaryFocus != _posSearchFocusNode;
+
+      if (key == LogicalKeyboardKey.enter || key == LogicalKeyboardKey.numpadEnter) {
+        if (_usbScanBuffer.trim().isNotEmpty) {
+          final scannedCode = _usbScanBuffer;
+          _usbScanBuffer = '';
+          if (!isEditingOtherField) {
+            _handleBarcodeScan(scannedCode);
+          }
+        }
+      } else if (character != null && character.isNotEmpty) {
+        final now = DateTime.now();
+        if (_lastUsbKeyTime == null || now.difference(_lastUsbKeyTime!).inMilliseconds > 300) {
+          _usbScanBuffer = '';
+        }
+        _lastUsbKeyTime = now;
+        _usbScanBuffer += character;
+      }
+    }
+  }
+
+  @override
   Widget build(BuildContext context) {
     final user = ref.watch(currentUserProvider);
     if (user == null) return const Center(child: CircularProgressIndicator());
 
-    // Check for Birthday
+    // Check for Birthday & Attendance Check-In
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (context.mounted) {
         BirthdayService.checkAndShowBirthdayWish(context, user);
+        AttendanceDialog.checkAndShow(context, ref, user);
       }
     });
 
@@ -157,8 +217,12 @@ class _CashierPOSState extends ConsumerState<CashierPOS> {
           }
         },
         child: PasscodeGuard(
-          child: Scaffold(
-            backgroundColor: theme.scaffoldBackgroundColor,
+          child: KeyboardListener(
+            focusNode: _globalKeyboardFocusNode,
+            autofocus: true,
+            onKeyEvent: _handleGlobalKeyEvent,
+            child: Scaffold(
+              backgroundColor: theme.scaffoldBackgroundColor,
             appBar: MainAppBar(
               title: _currentView == POSView.sales 
                   ? 'POS System (${isWholesale ? "Wholesale" : "Retail"})' 
@@ -206,6 +270,7 @@ class _CashierPOSState extends ConsumerState<CashierPOS> {
                     ),
                   )
                 : null,
+            ),
           ),
         ),
       ),
@@ -217,25 +282,29 @@ class _CashierPOSState extends ConsumerState<CashierPOS> {
       context: context,
       isScrollControlled: true,
       backgroundColor: Colors.transparent,
-      builder: (context) => Container(
-        height: MediaQuery.of(context).size.height * 0.85,
-        decoration: BoxDecoration(
-          color: Theme.of(context).scaffoldBackgroundColor,
-          borderRadius: const BorderRadius.vertical(top: Radius.circular(AppRadius.xl)),
-        ),
-        child: Column(
-          children: [
-            Container(
-              width: 40,
-              height: 4,
-              margin: const EdgeInsets.symmetric(vertical: 12),
-              decoration: BoxDecoration(
-                color: Colors.grey.withValues(alpha: 0.3),
-                borderRadius: BorderRadius.circular(2),
+      builder: (context) => SafeArea(
+        top: false,
+        bottom: true,
+        child: Container(
+          height: MediaQuery.of(context).size.height * 0.85,
+          decoration: BoxDecoration(
+            color: Theme.of(context).scaffoldBackgroundColor,
+            borderRadius: const BorderRadius.vertical(top: Radius.circular(AppRadius.xl)),
+          ),
+          child: Column(
+            children: [
+              Container(
+                width: 40,
+                height: 4,
+                margin: const EdgeInsets.symmetric(vertical: 12),
+                decoration: BoxDecoration(
+                  color: Colors.grey.withValues(alpha: 0.3),
+                  borderRadius: BorderRadius.circular(2),
+                ),
               ),
-            ),
-            Expanded(child: _buildCartSection(context, ref)),
-          ],
+              Expanded(child: _buildCartSection(context, ref)),
+            ],
+          ),
         ),
       ),
     );
@@ -420,7 +489,7 @@ class _CashierPOSState extends ConsumerState<CashierPOS> {
       userRole: user.activePrimaryRole.name.toUpperCase(),
       currentRoute: currentRoute,
       items: menuItems,
-      onTap: (route) => MenuService.navigate(context, route, currentRoute),
+      onTap: (route) => MenuService.navigate(context, ref, route, currentRoute),
     );
   }
 
@@ -474,21 +543,43 @@ class _CashierPOSState extends ConsumerState<CashierPOS> {
                     })
                     .toList();
                 
-                // Sort: Highest Quantity first, then Priced items, then Natural Name sort
+                // Sort:
+                // 1. Stocked & Priced products first (Sellable items at the top)
+                // 2. Stocked products
+                // 3. Priced products
+                // 4. Highest Quantity first
+                // 5. Natural Name sort
                 filtered.sort((a, b) {
-                  // 1. Quantity Priority (Descending)
-                  if (a.stockQuantity != b.stockQuantity) {
-                    return b.stockQuantity.compareTo(a.stockQuantity);
-                  }
+                  final aIsStocked = a.isUnlimited || a.stockQuantity > 0;
+                  final bIsStocked = b.isUnlimited || b.stockQuantity > 0;
 
-                  // 2. Priced Priority (Sellable items first if quantities are equal)
                   final aIsPriced = a.getPrice(isWholesale, customer: _selectedCustomer) > 0.01;
                   final bIsPriced = b.getPrice(isWholesale, customer: _selectedCustomer) > 0.01;
+
+                  final aIsStockedAndPriced = aIsStocked && aIsPriced;
+                  final bIsStockedAndPriced = bIsStocked && bIsPriced;
+
+                  // 1. Stocked AND Priced Priority (Top Priority)
+                  if (aIsStockedAndPriced != bIsStockedAndPriced) {
+                    return aIsStockedAndPriced ? -1 : 1;
+                  }
+
+                  // 2. Stocked Priority
+                  if (aIsStocked != bIsStocked) {
+                    return aIsStocked ? -1 : 1;
+                  }
+
+                  // 3. Priced Priority
                   if (aIsPriced != bIsPriced) {
                     return aIsPriced ? -1 : 1;
                   }
 
-                  // 3. Natural Name Sort (Covers weight ranges)
+                  // 4. Quantity Priority (Descending)
+                  if (a.stockQuantity != b.stockQuantity) {
+                    return b.stockQuantity.compareTo(a.stockQuantity);
+                  }
+
+                  // 5. Natural Name Sort (Covers weight ranges)
                   return _compareNaturally(a.name, b.name);
                 });
                 
@@ -501,7 +592,7 @@ class _CashierPOSState extends ConsumerState<CashierPOS> {
                     crossAxisCount: crossAxisCount,
                     crossAxisSpacing: AppSpacing.s,
                     mainAxisSpacing: AppSpacing.s,
-                    childAspectRatio: 0.85,
+                    childAspectRatio: ResponsiveLayout.isMobile(context) ? 0.65 : (ResponsiveLayout.isTablet(context) ? 0.75 : 0.8),
                   ),
                   itemCount: filtered.length,
                   itemBuilder: (context, index) {
@@ -527,6 +618,21 @@ class _CashierPOSState extends ConsumerState<CashierPOS> {
                       return pName == cutToMatch || mType.contains(pName) || pName.contains(cutToMatch);
                     });
 
+                    double dispatchedQty = product.dailyStockAdded;
+                    if (dispatchedQty <= 0) {
+                      final sumTransfers = transfers.where((t) {
+                        final pName = product.name.toLowerCase();
+                        final mType = t.meatType.toLowerCase();
+                        return (mType.contains(pName) || pName.contains(mType)) &&
+                            (t.status == TransferStatus.received || t.destination == user.branchCode);
+                      }).fold(0.0, (sum, t) => sum + t.weight);
+                      if (sumTransfers > 0) dispatchedQty = sumTransfers;
+                    }
+
+                    final cartItems = ref.watch(cartProvider);
+                    final cartItem = cartItems.where((item) => item.product.id == product.id).firstOrNull;
+                    final double? cartQty = cartItem?.quantity;
+
                     return ProductCard(
                       name: product.name,
                       category: mappedCat,
@@ -536,14 +642,19 @@ class _CashierPOSState extends ConsumerState<CashierPOS> {
                       isUnlimited: product.isUnlimited,
                       lowStockThreshold: product.lowStockThreshold,
                       unit: product.unit,
-                      promoLabel: hasPromo ? '${product.name} - ${product.discountPercentage % 1 == 0 ? product.discountPercentage.toInt() : product.discountPercentage}% OFF' : null,
+                      size: product.size,
+                      promoLabel: hasPromo ? '${product.discountPercentage % 1 == 0 ? product.discountPercentage.toInt() : product.discountPercentage}% OFF' : null,
                       imageUrl: product.imageUrl,
                       isInTransit: productInTransit,
+                      dispatchedQuantity: dispatchedQty > 0 ? dispatchedQty : null,
+                      isDispatchedFromWarehouse: dispatchedQty > 0,
+                      cartQuantity: cartQty,
                       onTap: isPriced ? () => _showWeightInputDialog(product) : () {
                         ScaffoldMessenger.of(context).showSnackBar(
                           const SnackBar(content: Text('This product is not yet priced. Please contact Admin.')),
                         );
                       },
+                      onQuickAdd: isPriced ? () => _showWeightInputDialog(product) : null,
                     );
                   },
                 );
@@ -599,10 +710,33 @@ class _CashierPOSState extends ConsumerState<CashierPOS> {
               child: SizedBox(
                 height: 45,
                 child: TextField(
+                  controller: _posSearchController,
+                  focusNode: _posSearchFocusNode,
                   onChanged: (v) => setState(() => _productSearchQuery = v),
+                  onSubmitted: (v) => _handleBarcodeScan(v),
                   decoration: InputDecoration(
-                    hintText: 'Search products...',
-                    prefixIcon: const Icon(Icons.search, size: 20),
+                    hintText: kIsWeb
+                        ? 'Search or scan barcode (USB Scanner / Camera)...'
+                        : 'Search or scan barcode (USB Scanner / Camera)...',
+                    prefixIcon: const Icon(Icons.qr_code_scanner, size: 20),
+                    suffixIcon: Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        if (_posSearchController.text.isNotEmpty)
+                          IconButton(
+                            icon: const Icon(Icons.clear, size: 18),
+                            onPressed: () {
+                              _posSearchController.clear();
+                              setState(() => _productSearchQuery = '');
+                            },
+                          ),
+                        IconButton(
+                          icon: Icon(Icons.camera_alt_rounded, color: theme.colorScheme.primary),
+                          tooltip: 'Scan Barcode with Camera (Phone/Web)',
+                          onPressed: () => _openCameraScanner(context),
+                        ),
+                      ],
+                    ),
                     contentPadding: const EdgeInsets.symmetric(horizontal: 16),
                     border: OutlineInputBorder(
                       borderRadius: BorderRadius.circular(AppRadius.m),
@@ -615,8 +749,14 @@ class _CashierPOSState extends ConsumerState<CashierPOS> {
             ),
             if (isMobile) ...[
               const SizedBox(width: AppSpacing.s),
+              IconButton.filledTonal(
+                icon: const Icon(Icons.camera_alt_rounded),
+                tooltip: 'Camera Barcode Scanner',
+                onPressed: () => _openCameraScanner(context),
+              ),
+              const SizedBox(width: AppSpacing.s),
               SizedBox(
-                width: 120,
+                width: 110,
                 child: _buildCategoryDropdown(categories),
               ),
             ],
@@ -699,6 +839,87 @@ class _CashierPOSState extends ConsumerState<CashierPOS> {
         ],
       ),
     );
+  }
+
+  void _openCameraScanner(BuildContext context) {
+    CameraBarcodeScannerDialog.show(
+      context,
+      title: 'Scan Product Barcode',
+      continuous: true,
+      onScanned: (barcode) {
+        return _handleBarcodeScan(barcode);
+      },
+    );
+  }
+
+  String? _handleBarcodeScan(String rawQuery) {
+    final query = rawQuery.replaceAll(RegExp(r'[\r\n\t\x00-\x1F]'), '').trim();
+    if (query.isEmpty) return null;
+
+    _posSearchController.clear();
+    setState(() {
+      _productSearchQuery = '';
+    });
+
+    final products = ref.read(productsFutureProvider).value ?? [];
+    final isWholesale = ref.read(isWholesaleProvider);
+
+    final matched = products.where((p) => !p.isDeleted).where((p) {
+      final skuMatch = p.sku != null && p.sku!.trim().toLowerCase() == query.toLowerCase();
+      final idMatch = p.id.trim().toLowerCase() == query.toLowerCase();
+      final nameMatch = p.name.trim().toLowerCase() == query.toLowerCase();
+      return skuMatch || idMatch || nameMatch;
+    }).firstOrNull;
+
+    if (matched != null) {
+      final currentPrice = matched.getPrice(isWholesale, customer: _selectedCustomer);
+      final basePrice = isWholesale ? matched.wholesalePrice : matched.retailPrice;
+
+      if (currentPrice <= 0.01) {
+        ScaffoldMessenger.of(context).hideCurrentSnackBar();
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('This product is not yet priced. Please contact Admin.')),
+        );
+        return 'Product not priced: ${matched.name}';
+      }
+
+      // Directly auto-fill the cart with 1 unit
+      ref.read(cartProvider.notifier).addItemWithCustomPrice(
+        matched,
+        1.0,
+        currentPrice,
+        basePrice,
+        selectedUnit: 'Pcs',
+      );
+
+      HapticFeedback.mediumImpact();
+
+      ScaffoldMessenger.of(context).hideCurrentSnackBar();
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('Scanned: ${matched.name} (+1 added to cart)'),
+          duration: const Duration(milliseconds: 1200),
+          backgroundColor: AppColors.accentGreen,
+        ),
+      );
+
+      setState(() {
+        _productSearchQuery = '';
+      });
+
+      return 'Scanned: ${matched.name} (+1 added)';
+    } else {
+      HapticFeedback.vibrate();
+      ScaffoldMessenger.of(context).hideCurrentSnackBar();
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('No product found for barcode "$query"'),
+          duration: const Duration(seconds: 2),
+          backgroundColor: Colors.red,
+        ),
+      );
+      return 'No product found for barcode "$query"';
+    }
   }
 
   void _showWeightInputDialog(Product product) {
@@ -820,10 +1041,12 @@ class _CashierPOSState extends ConsumerState<CashierPOS> {
                     return CartItemTile(
                       category: item.product.category,
                       name: item.product.name,
-                      qty: '1',
+                      qty: item.quantity % 1 == 0 ? item.quantity.toInt().toString() : item.quantity.toStringAsFixed(1),
                       weight: WeightConverter.formatShort(item.quantity, unit: item.selectedUnit ?? item.product.unit),
                       amount: '₵${item.total.toStringAsFixed(2)}',
                       onDelete: () => notifier.removeItem(index),
+                      onIncrement: () => notifier.incrementQuantity(index, 1.0),
+                      onDecrement: () => notifier.incrementQuantity(index, -1.0),
                     );
                   },
                 ),
@@ -916,6 +1139,22 @@ class _CashierPOSState extends ConsumerState<CashierPOS> {
         ],
       ),
     );
+  }
+
+  void _quickExactCashCheckout(double finalTotal, double discount, String promo) {
+    if (_isProcessingCheckout || ref.read(cartProvider).isEmpty) return;
+
+    setState(() => _isProcessingCheckout = true);
+    HapticFeedback.mediumImpact();
+
+    final payments = [
+      PaymentDetail(
+        method: PaymentMethod.cash,
+        amount: finalTotal,
+      )
+    ];
+
+    _completeSale(ref, payments, finalTotal, discount, promo);
   }
 
   Widget _buildCartSummary(WidgetRef ref) {
@@ -1031,30 +1270,73 @@ class _CashierPOSState extends ConsumerState<CashierPOS> {
           ],
           _summaryRow('TOTAL DUE', '₵${total.toStringAsFixed(2)}', isBold: true, fontSize: 20, color: theme.colorScheme.primary),
           const SizedBox(height: AppSpacing.m),
-          SizedBox(
-            width: double.infinity,
-            height: 55,
-            child: ElevatedButton(
-              onPressed: cartItems.isEmpty ? null : () => _showPaymentDialog(total, discount, promoLabel),
-              style: ElevatedButton.styleFrom(
-                backgroundColor: theme.colorScheme.primary,
-                foregroundColor: Colors.white,
-                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(AppRadius.m)),
+          Row(
+            children: [
+              Expanded(
+                flex: 2,
+                child: SizedBox(
+                  height: 52,
+                  child: ElevatedButton.icon(
+                    onPressed: (cartItems.isEmpty || _isProcessingCheckout) ? null : () => _quickExactCashCheckout(total, discount, promoLabel),
+                    icon: _isProcessingCheckout
+                        ? const SizedBox(width: 16, height: 16, child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white))
+                        : const Icon(Icons.flash_on_rounded, size: 18),
+                    label: FittedBox(
+                      fit: BoxFit.scaleDown,
+                      child: Text(
+                        _isProcessingCheckout 
+                            ? 'PROCESSING...' 
+                            : 'EXACT CASH\n(₵${total.toStringAsFixed(2)})',
+                        textAlign: TextAlign.center,
+                        style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 11, height: 1.1),
+                      ),
+                    ),
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: AppColors.accentGreen,
+                      disabledBackgroundColor: Colors.grey.shade400,
+                      foregroundColor: Colors.white,
+                      disabledForegroundColor: Colors.white70,
+                      padding: const EdgeInsets.symmetric(horizontal: 6),
+                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(AppRadius.m)),
+                    ),
+                  ),
+                ),
               ),
-              child: const Text('PROCEED TO PAYMENT', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
-            ),
+              const SizedBox(width: 8),
+              Expanded(
+                flex: 3,
+                child: SizedBox(
+                  height: 52,
+                  child: ElevatedButton(
+                    onPressed: (cartItems.isEmpty || _isProcessingCheckout) ? null : () => _showPaymentDialog(total, discount, promoLabel),
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: theme.colorScheme.primary,
+                      disabledBackgroundColor: Colors.grey.shade400,
+                      foregroundColor: Colors.white,
+                      disabledForegroundColor: Colors.white70,
+                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(AppRadius.m)),
+                    ),
+                    child: Text(
+                      _isProcessingCheckout ? 'PROCESSING...' : 'PAYMENT OPTIONS',
+                      style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 13),
+                    ),
+                  ),
+                ),
+              ),
+            ],
           ),
           const SizedBox(height: 8),
           SizedBox(
             width: double.infinity,
-            height: 45,
+            height: 42,
             child: OutlinedButton.icon(
-              onPressed: cartItems.isEmpty ? null : () => _showDebtSaleDialog(total, discount, promoLabel),
+              onPressed: (cartItems.isEmpty || _isProcessingCheckout) ? null : () => _showDebtSaleDialog(total, discount, promoLabel),
               icon: const Icon(Icons.money_off, size: 18),
-              label: const Text('SAVE AS DEBT', style: TextStyle(fontWeight: FontWeight.bold)),
+              label: const Text('SAVE AS DEBT', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 12)),
               style: OutlinedButton.styleFrom(
                 foregroundColor: Colors.orange.shade800,
-                side: BorderSide(color: Colors.orange.shade800),
+                disabledForegroundColor: Colors.grey.shade400,
+                side: BorderSide(color: _isProcessingCheckout ? Colors.grey.shade300 : Colors.orange.shade800),
                 shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(AppRadius.m)),
               ),
             ),
@@ -1239,88 +1521,111 @@ class _CashierPOSState extends ConsumerState<CashierPOS> {
   }
 
   void _completeSale(WidgetRef ref, List<PaymentDetail> payments, double finalTotal, double discount, String promo) async {
-    final cartItems = ref.read(cartProvider);
-    final currentUser = ref.read(currentUserProvider);
-    
-    final double amountPaid = payments.fold(0.0, (sum, p) => sum + p.amount);
-    final double balance = finalTotal - amountPaid;
-    final double totalCost = cartItems.fold(0.0, (sum, item) => sum + (item.product.costPrice * item.quantity));
+    if (!_isProcessingCheckout) {
+      setState(() => _isProcessingCheckout = true);
+    }
 
-    // High Value Sale Enforcement: If total >= 800, prompt for customer
-    if (finalTotal >= 800 && _selectedCustomer == null) {
-      final proceed = await _showBulkPurchaseCustomerDialog();
-      if (!proceed) return;
+    try {
+      final cartItems = ref.read(cartProvider);
+      final currentUser = ref.read(currentUserProvider);
       
-      await _showCustomerDialog(isBulk: true);
-      if (_selectedCustomer == null) return;
-    }
+      final double amountPaid = payments.fold(0.0, (sum, p) => sum + p.amount);
+      final double balance = finalTotal - amountPaid;
+      final double totalCost = cartItems.fold(0.0, (sum, item) => sum + (item.product.costPrice * item.quantity));
 
-    // Debt Enforcement: If there's a balance, a customer MUST be selected
-    if (balance > 0.01 && _selectedCustomer == null) {
-      final proceed = await _showDebtCustomerRequiredDialog();
-      if (!proceed) return;
+      // High Value Sale Enforcement: If total >= 800, prompt for customer
+      if (finalTotal >= 800 && _selectedCustomer == null) {
+        final proceed = await _showBulkPurchaseCustomerDialog();
+        if (!proceed) {
+          if (mounted) setState(() => _isProcessingCheckout = false);
+          return;
+        }
+        
+        await _showCustomerDialog(isBulk: true);
+        if (_selectedCustomer == null) {
+          if (mounted) setState(() => _isProcessingCheckout = false);
+          return;
+        }
+      }
+
+      // Debt Enforcement: If there's a balance, a customer MUST be selected
+      if (balance > 0.01 && _selectedCustomer == null) {
+        final proceed = await _showDebtCustomerRequiredDialog();
+        if (!proceed) {
+          if (mounted) setState(() => _isProcessingCheckout = false);
+          return;
+        }
+        
+        // Open customer dialog and wait for it
+        await _showCustomerDialog();
+        
+        // If they registered/selected a customer, _selectedCustomer will be non-null now
+        if (_selectedCustomer == null) {
+          if (mounted) setState(() => _isProcessingCheckout = false);
+          return;
+        }
+      }
+
+      final hasBankDeposit = payments.any((p) => p.method == PaymentMethod.bankDeposit);
+
+      final sale = SaleRecord(
+        id: 'INV-${DateTime.now().millisecondsSinceEpoch}',
+        items: cartItems.map((item) => SaleItem(
+          product: item.product,
+          quantity: item.quantity,
+          priceAtSale: item.priceAtSale,
+          originalPrice: item.originalPrice,
+          selectedUnit: item.selectedUnit ?? item.product.unit,
+        )).toList(),
+        totalAmount: finalTotal,
+        totalDiscount: discount,
+        totalCost: totalCost,
+        appliedPromo: promo.isEmpty ? null : promo,
+        payments: payments,
+        timestamp: DateTime.now(),
+        cashierName: currentUser != null ? '${currentUser.firstName} ${currentUser.surname}' : 'Unknown Cashier',
+        cashierId: currentUser?.id ?? 'N/A',
+        customerName: _selectedCustomer?.name,
+        customerPhone: _selectedCustomer?.phone,
+        status: hasBankDeposit ? SaleStatus.awaitingDeposit : SaleStatus.completed,
+        isVerified: !hasBankDeposit, // Cash/MoMo sales are verified immediately
+        bankReceiptUrl: _uploadedReceiptUrl,
+      );
+
+      await ref.read(saleHistoryProvider.notifier).addSale(sale);
+
+      // Record promo usage on customer if a promotional discount was applied
+      if (_selectedCustomer != null && discount > 0) {
+        final updatedCustomer = _selectedCustomer!.copyWith(lastPromoDate: DateTime.now());
+        ref.read(customerProvider.notifier).updateCustomer(updatedCustomer);
+      }
+
+      ref.read(cartProvider.notifier).clear();
       
-      // Open customer dialog and wait for it
-      await _showCustomerDialog();
-      
-      // If they registered/selected a customer, _selectedCustomer will be non-null now
-      if (_selectedCustomer == null) return; 
+      // Send SMS with branch identification only if fully paid (NOT a debt)
+      if (sale.balance <= 0.01) {
+        final currentBranch = ref.read(currentBranchProvider);
+        final String? branchName = currentBranch != null 
+            ? '${currentBranch.name} (${currentBranch.location})' 
+            : null;
+
+        SmsService.sendReceiptSms(sale, discountAmount: discount, branchName: branchName);
+      }
+
+      setState(() {
+        _selectedCustomer = null;
+        _uploadedReceiptUrl = null;
+        _applyDailyPromo = true;
+      });
+
+      _showPrintConfirmation(sale);
+    } catch (e) {
+      debugPrint('Checkout error: $e');
+    } finally {
+      if (mounted) {
+        setState(() => _isProcessingCheckout = false);
+      }
     }
-
-    final hasBankDeposit = payments.any((p) => p.method == PaymentMethod.bankDeposit);
-
-    final sale = SaleRecord(
-      id: 'INV-${DateTime.now().millisecondsSinceEpoch}',
-      items: cartItems.map((item) => SaleItem(
-        product: item.product,
-        quantity: item.quantity,
-        priceAtSale: item.priceAtSale,
-        originalPrice: item.originalPrice,
-        selectedUnit: item.selectedUnit ?? item.product.unit,
-      )).toList(),
-      totalAmount: finalTotal,
-      totalDiscount: discount,
-      totalCost: totalCost,
-      appliedPromo: promo.isEmpty ? null : promo,
-      payments: payments,
-      timestamp: DateTime.now(),
-      cashierName: currentUser != null ? '${currentUser.firstName} ${currentUser.surname}' : 'Unknown Cashier',
-      cashierId: currentUser?.id ?? 'N/A',
-      customerName: _selectedCustomer?.name,
-      customerPhone: _selectedCustomer?.phone,
-      status: hasBankDeposit ? SaleStatus.awaitingDeposit : SaleStatus.completed,
-      isVerified: !hasBankDeposit, // Cash/MoMo sales are verified immediately
-      bankReceiptUrl: _uploadedReceiptUrl,
-    );
-
-    await ref.read(saleHistoryProvider.notifier).addSale(sale);
-
-    // Record promo usage on customer if a promotional discount was applied
-    if (_selectedCustomer != null && discount > 0) {
-      final updatedCustomer = _selectedCustomer!.copyWith(lastPromoDate: DateTime.now());
-      ref.read(customerProvider.notifier).updateCustomer(updatedCustomer);
-    }
-
-    ref.read(cartProvider.notifier).clear();
-    
-    // Send SMS with branch identification only if fully paid (NOT a debt)
-    // When a sale is recorded as debt, do NOT send SMS instantly; reminders are sent via Debt Tracker.
-    if (sale.balance <= 0.01) {
-      final currentBranch = ref.read(currentBranchProvider);
-      final String? branchName = currentBranch != null 
-          ? '${currentBranch.name} (${currentBranch.location})' 
-          : null;
-
-      SmsService.sendReceiptSms(sale, discountAmount: discount, branchName: branchName);
-    }
-
-    setState(() {
-      _selectedCustomer = null;
-      _uploadedReceiptUrl = null;
-      _applyDailyPromo = true;
-    });
-
-    _showPrintConfirmation(sale);
   }
 
   Future<bool> _showDebtCustomerRequiredDialog() async {
@@ -1377,6 +1682,18 @@ class _CashierPOSState extends ConsumerState<CashierPOS> {
     return result ?? false;
   }
 
+  void _resetToPOSScreen() {
+    Navigator.of(context).popUntil((route) => route.settings.name == '/cashier' || route.isFirst);
+    if (mounted) {
+      setState(() {
+        _currentView = POSView.sales;
+        _selectedCustomer = null;
+      });
+      ref.read(cartProvider.notifier).clear();
+      _posSearchFocusNode.requestFocus();
+    }
+  }
+
   void _showPrintConfirmation(SaleRecord sale) {
     showDialog(
       context: context,
@@ -1384,14 +1701,13 @@ class _CashierPOSState extends ConsumerState<CashierPOS> {
       builder: (context) => ReceiptSuccessDialog(
         sale: sale,
         ref: ref,
+        onNextCustomer: () => _resetToPOSScreen(),
       ),
     );
   }
 
   Widget _buildFooter() {
     final theme = Theme.of(context);
-    final isMobile = ResponsiveLayout.isMobile(context);
-    final pendingCount = ref.watch(pendingIncomingTransfersProvider).length;
 
     return Container(
       height: 65,
@@ -1403,14 +1719,6 @@ class _CashierPOSState extends ConsumerState<CashierPOS> {
         mainAxisAlignment: MainAxisAlignment.spaceEvenly,
         children: [
           _footerAction(Icons.point_of_sale, 'New Sale', _currentView == POSView.sales, () => setState(() => _currentView = POSView.sales)),
-          if (isMobile)
-            _footerAction(
-              Icons.qr_code_scanner_rounded, 
-              'Incoming Stock', 
-              false, 
-              () => Navigator.pushNamed(context, '/cashier/verify-stock'),
-              badge: pendingCount > 0 ? pendingCount : null,
-            ),
           _footerAction(Icons.history, 'Transaction History', _currentView == POSView.history, () => setState(() => _currentView = POSView.history)),
         ],
       ),
@@ -2615,15 +2923,16 @@ class _CashierPOSState extends ConsumerState<CashierPOS> {
   }
 
   String _getMappedCategory(Product p) {
-    final cat = p.category.toUpperCase();
-    final name = p.name.toUpperCase();
-    if (cat.contains('HARD') || cat.contains('LAYER') || (cat.contains('CHICKEN') && name.contains('HARD'))) {
-      return 'HARD CHICKEN';
-    }
-    if (cat.contains('SOFT') || cat.contains('BROILER') || (cat.contains('CHICKEN') && name.contains('SOFT'))) {
-      return 'SOFT CHICKEN';
-    }
-    return cat;
+    final cat = p.category.trim().toUpperCase();
+    if (cat.contains('SKIN')) return 'SKINCARE';
+    if (cat.contains('HAIR')) return 'HAIRCARE';
+    if (cat.contains('FRAGRANCE') || cat.contains('PERFUME')) return 'FRAGRANCE';
+    if (cat.contains('MAKEUP') || cat.contains('COSMETIC')) return 'MAKEUP';
+    if (cat.contains('PERSONAL') || cat.contains('BATH') || cat.contains('SOAP')) return 'PERSONAL CARE';
+    if (cat.contains('NAIL')) return 'NAIL CARE';
+    if (cat.contains('GROOMING') || cat.contains('MEN')) return 'GROOMING';
+    if (cat.contains('ACCESSORIES') || cat.contains('TOOL')) return 'ACCESSORIES';
+    return cat.isEmpty ? 'OTHER' : cat;
   }
 
   int _compareNaturally(String a, String b) {
@@ -2652,61 +2961,27 @@ class ProductWeightDialog extends StatefulWidget {
 }
 
 class _ProductWeightDialogState extends State<ProductWeightDialog> {
-  static const List<WeightUnit> _availableUnits = [
-    WeightUnit.kg,
-    WeightUnit.g,
-    WeightUnit.lb,
-    WeightUnit.unit,
-  ];
-
   final _formKey = GlobalKey<FormState>();
-  late final TextEditingController _weightController;
-  final _qtyController = TextEditingController(text: '1');
-  final _moneyController = TextEditingController(); // For money-to-weight calculation
-  WeightUnit _unit = WeightUnit.kg;
-  double _weight = 1.0;
-  int _quantity = 1;
-  bool _isHalf = false; 
+  late final TextEditingController _qtyController;
+  final _moneyController = TextEditingController();
+  
+  String _selectedUnit = 'Pcs'; // 'Pcs', 'Packs', 'Boxes'
 
-  void _toggleUnit(WeightUnit unit) {
-    if (_unit == unit) return;
-    setState(() {
-      _weight = WeightConverter.convert(
-        value: _weight,
-        from: _unit,
-        to: unit,
-      );
-      _unit = unit;
-      _weightController.text = _weight.toStringAsFixed(
-        _unit == WeightUnit.unit ? 0 : (_unit == WeightUnit.g ? 0 : 2),
-      );
-      _moneyController.clear(); // Clear money when unit changes to avoid confusion
-    });
+  List<String> get _availableUnits {
+    final units = <String>['Pcs'];
+    if (widget.product.hasPacks) units.add('Packs');
+    if (widget.product.hasBoxes) units.add('Boxes');
+    return units;
   }
 
   @override
   void initState() {
     super.initState();
-    final String pName = widget.product.name.toUpperCase();
-    final String pCat = widget.product.category.toUpperCase();
-    
-    if (pName.contains('HEAD') && (pCat.contains('GOAT') || pCat.contains('SHEEP'))) {
-      _unit = WeightUnit.unit;
-      _weight = 1.0;
-    } else {
-      _unit = WeightUnit.values.firstWhere(
-        (u) => u.name == widget.product.unit, 
-        orElse: () => WeightUnit.kg
-      );
-      _weight = 1.0;
-    }
-    
-    _weightController = TextEditingController(text: _weight.toStringAsFixed(_unit == WeightUnit.unit ? 0 : (_unit == WeightUnit.g ? 0 : 1)));
+    _qtyController = TextEditingController(text: '1');
   }
 
   @override
   void dispose() {
-    _weightController.dispose();
     _qtyController.dispose();
     _moneyController.dispose();
     super.dispose();
@@ -2715,43 +2990,34 @@ class _ProductWeightDialogState extends State<ProductWeightDialog> {
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
-    final bool isWholeChicken = widget.product.name.contains('Whole Chicken');
 
     return Consumer(
       builder: (context, ref, _) {
         final isWholesale = ref.watch(isWholesaleProvider);
-        final isPcs = _unit == WeightUnit.unit;
-        
-        final double kgWeight = isPcs 
-            ? _weight 
-            : WeightConverter.convert(value: _weight, from: _unit, to: WeightUnit.kg);
-
-        final currentPrice = widget.product.getPrice(isWholesale, weight: isPcs ? 1.0 : kgWeight, customer: widget.customer);
+        final basePrice = widget.product.getPrice(isWholesale, customer: widget.customer);
+        final originalPrice = isWholesale ? widget.product.wholesalePrice : widget.product.retailPrice;
         final hasPromo = widget.product.isPromoActiveFor(isWholesale, widget.customer);
-        final basePrice = isWholesale ? (widget.product.wholesalePrice) : (widget.product.retailPrice);
-        
-        double comparisonPrice = basePrice;
-        final brackets = isWholesale ? widget.product.wholesaleBrackets : widget.product.retailBrackets;
-        if (!isPcs && kgWeight > 0 && brackets != null && brackets.isNotEmpty) {
-           for (var bracket in brackets) {
-            if (kgWeight >= bracket.minWeight && kgWeight <= bracket.maxWeight) {
-              comparisonPrice = bracket.price;
-              break;
-            }
-          }
+
+        // Calculate multipliers
+        double pcsMultiplier = 1.0;
+        if (_selectedUnit == 'Packs') {
+          pcsMultiplier = widget.product.pcsPerPack > 0 ? widget.product.pcsPerPack : 12.0;
+        } else if (_selectedUnit == 'Boxes') {
+          pcsMultiplier = widget.product.totalPcsPerBox > 0 ? widget.product.totalPcsPerBox : 120.0;
         }
 
-        final double finalEffectiveQty = _isHalf ? 0.5 : _weight;
-        final double finalPrice = currentPrice;
+        final double unitPrice = basePrice * pcsMultiplier;
+        final double qtyInput = double.tryParse(_qtyController.text) ?? 1.0;
+        final double totalPcsNeeded = qtyInput * pcsMultiplier;
+        final double totalPrice = unitPrice * qtyInput;
 
-        final double total = isPcs 
-            ? (finalEffectiveQty * finalPrice * _quantity) 
-            : (kgWeight * currentPrice * _quantity);
+        final bool isOutOfStock = widget.product.stockQuantity <= 0 && !widget.product.isUnlimited;
+        final bool isExceedingStock = !widget.product.isUnlimited && totalPcsNeeded > widget.product.stockQuantity;
 
         return Dialog(
           shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(AppRadius.l)),
           child: ConstrainedBox(
-            constraints: const BoxConstraints(maxWidth: 360),
+            constraints: const BoxConstraints(maxWidth: 380),
             child: SingleChildScrollView(
               padding: const EdgeInsets.all(AppSpacing.l),
               child: Form(
@@ -2759,243 +3025,190 @@ class _ProductWeightDialogState extends State<ProductWeightDialog> {
                 child: Column(
                   mainAxisSize: MainAxisSize.min,
                   children: [
-                    Text(
-                      widget.product.category.toUpperCase(),
-                      style: const TextStyle(color: Colors.red, fontSize: 13, fontWeight: FontWeight.bold, letterSpacing: 1.2),
+                    // Category Badge
+                    Container(
+                      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                      decoration: BoxDecoration(
+                        color: theme.colorScheme.primary.withValues(alpha: 0.1),
+                        borderRadius: BorderRadius.circular(12),
+                      ),
+                      child: Text(
+                        widget.product.category.toUpperCase(),
+                        style: TextStyle(
+                          color: theme.colorScheme.primary, 
+                          fontSize: 11, 
+                          fontWeight: FontWeight.bold, 
+                          letterSpacing: 1.0,
+                        ),
+                      ),
                     ),
+                    const SizedBox(height: 8),
+
+                    // Product Name
                     Text(
                       widget.product.name,
                       style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
                       textAlign: TextAlign.center,
                     ),
                     const SizedBox(height: AppSpacing.m),
-                    
-                    // MONEY INPUT (CALCULATE WEIGHT FROM PRICE)
-                    Container(
-                      padding: const EdgeInsets.all(12),
-                      decoration: BoxDecoration(
-                        color: theme.colorScheme.primary.withValues(alpha: 0.05),
-                        borderRadius: BorderRadius.circular(8),
-                        border: Border.all(color: theme.colorScheme.primary.withValues(alpha: 0.1)),
+
+                    // Packaging Unit Selector
+                    if (_availableUnits.length > 1) ...[
+                      const Text(
+                        'SELECT UNIT',
+                        style: TextStyle(fontSize: 10, fontWeight: FontWeight.bold, letterSpacing: 0.5, color: Colors.grey),
                       ),
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          const Text('CALCULATE FROM MONEY (₵)', style: TextStyle(fontSize: 9, fontWeight: FontWeight.bold, color: Colors.grey)),
-                          const SizedBox(height: 4),
-                          TextField(
-                            controller: _moneyController,
-                            decoration: const InputDecoration(
-                              hintText: 'Enter customer amount...',
-                              isDense: true,
-                              prefixText: '₵ ',
-                              border: InputBorder.none,
+                      const SizedBox(height: 6),
+                      SegmentedButton<String>(
+                        segments: _availableUnits.map((u) => ButtonSegment<String>(
+                          value: u,
+                          label: Text(u.toUpperCase(), style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 11)),
+                        )).toList(),
+                        selected: {_selectedUnit},
+                        onSelectionChanged: (Set<String> newSelection) {
+                          setState(() {
+                            _selectedUnit = newSelection.first;
+                            _moneyController.clear();
+                          });
+                        },
+                      ),
+                      const SizedBox(height: AppSpacing.m),
+                    ],
+
+                    // Quantity Stepper / Input
+                    Row(
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      children: [
+                        IconButton.outlined(
+                          icon: const Icon(Icons.remove_rounded, size: 20),
+                          onPressed: qtyInput > 1 ? () {
+                            setState(() {
+                              final newQty = (qtyInput - 1).clamp(1.0, 9999.0);
+                              _qtyController.text = newQty % 1 == 0 ? newQty.toInt().toString() : newQty.toStringAsFixed(1);
+                              _moneyController.clear();
+                            });
+                          } : null,
+                        ),
+                        const SizedBox(width: 8),
+                        SizedBox(
+                          width: 120,
+                          child: TextFormField(
+                            controller: _qtyController,
+                            textAlign: TextAlign.center,
+                            decoration: InputDecoration(
+                              labelText: 'Quantity',
+                              suffixText: _selectedUnit.toLowerCase(),
+                              contentPadding: const EdgeInsets.symmetric(vertical: 8, horizontal: 8),
+                              errorText: isExceedingStock ? 'Max: ${widget.product.stockQuantity.toInt()} pcs' : null,
                             ),
+                            style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
                             keyboardType: const TextInputType.numberWithOptions(decimal: true),
-                            style: TextStyle(fontSize: 20, fontWeight: FontWeight.w900, color: theme.colorScheme.primary),
+                            inputFormatters: [FilteringTextInputFormatter.allow(RegExp(r'[0-9.]'))],
                             onChanged: (v) {
-                              final amount = double.tryParse(v) ?? 0;
-                              if (amount > 0 && finalPrice > 0) {
-                                setState(() {
-                                  double calcKg = amount / finalPrice;
-                                  _weight = WeightConverter.convert(
-                                    value: calcKg,
-                                    from: WeightUnit.kg,
-                                    to: _unit,
-                                  );
-                                  _weightController.text = _weight.toStringAsFixed(
-                                    _unit == WeightUnit.unit ? 0 : (_unit == WeightUnit.g ? 0 : 2),
-                                  );
-                                });
-                              }
+                              setState(() {});
+                              _moneyController.clear();
+                            },
+                            validator: (v) {
+                              if (v == null || (double.tryParse(v) ?? 0) <= 0) return '!';
+                              if (isExceedingStock) return 'Out of stock';
+                              return null;
                             },
                           ),
+                        ),
+                        const SizedBox(width: 8),
+                        IconButton.outlined(
+                          icon: const Icon(Icons.add_rounded, size: 20),
+                          onPressed: () {
+                            setState(() {
+                              final newQty = qtyInput + 1;
+                              _qtyController.text = newQty % 1 == 0 ? newQty.toInt().toString() : newQty.toStringAsFixed(1);
+                              _moneyController.clear();
+                            });
+                          },
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: AppSpacing.m),
+
+                    // Unit Price & Total Calculation
+                    Container(
+                      padding: const EdgeInsets.all(12),
+                      width: double.infinity,
+                      decoration: BoxDecoration(
+                        color: theme.colorScheme.surface,
+                        borderRadius: BorderRadius.circular(AppRadius.m),
+                        border: Border.all(color: theme.dividerColor),
+                      ),
+                      child: Column(
+                        children: [
+                          Row(
+                            mainAxisAlignment: MainAxisAlignment.center,
+                            children: [
+                              if (hasPromo) ...[
+                                Text('₵${(originalPrice * pcsMultiplier).toStringAsFixed(2)}', 
+                                  style: TextStyle(color: theme.colorScheme.onSurfaceVariant, decoration: TextDecoration.lineThrough, fontSize: 12)),
+                                const SizedBox(width: 6),
+                              ],
+                              Text(
+                                '₵${unitPrice.toStringAsFixed(2)} / ${_selectedUnit.toLowerCase()}', 
+                                style: TextStyle(color: hasPromo ? Colors.orange.shade800 : theme.colorScheme.onSurfaceVariant, fontWeight: FontWeight.bold, fontSize: 13),
+                              ),
+                            ],
+                          ),
+                          const SizedBox(height: 4),
+                          Text(
+                            'Total: ₵${totalPrice.toStringAsFixed(2)}',
+                            style: TextStyle(fontWeight: FontWeight.w900, fontSize: 24, color: theme.colorScheme.primary),
+                          ),
+                          if (_selectedUnit != 'Pcs')
+                            Text(
+                              '(${totalPcsNeeded.toInt()} Pcs Total)',
+                              style: TextStyle(fontSize: 11, color: theme.colorScheme.onSurfaceVariant, fontWeight: FontWeight.w500),
+                            ),
                         ],
                       ),
                     ),
                     const SizedBox(height: AppSpacing.m),
 
-                    if (isWholeChicken) ...[
-                      const Text('SELECT SIZE', style: TextStyle(fontSize: 10, fontWeight: FontWeight.bold, letterSpacing: 1)),
-                      const SizedBox(height: 8),
-                      Row(
-                        children: [
-                          Expanded(
-                            child: ChoiceChip(
-                              label: const Center(child: Text('FULL BIRD')),
-                              selected: !_isHalf,
-                              onSelected: (v) => setState(() => _isHalf = false),
-                            ),
-                          ),
-                          const SizedBox(width: 8),
-                          Expanded(
-                            child: ChoiceChip(
-                              label: const Center(child: Text('HALF BIRD')),
-                              selected: _isHalf,
-                              onSelected: (v) => setState(() => _isHalf = true),
-                            ),
-                          ),
-                        ],
-                      ),
-                      const SizedBox(height: AppSpacing.m),
-                    ],
-                    Row(
-                      mainAxisAlignment: MainAxisAlignment.center,
-                      children: [
-                        Column(
-                          children: [
-                            const Text('SELECT UNIT', style: TextStyle(fontSize: 9, fontWeight: FontWeight.bold, letterSpacing: 0.5)),
-                            const SizedBox(height: 4),
-                            ToggleButtons(
-                              constraints: const BoxConstraints(minWidth: 55, minHeight: 40),
-                              isSelected: _availableUnits.map((u) => _unit == u).toList(),
-                              onPressed: (index) => _toggleUnit(_availableUnits[index]),
-                              borderRadius: BorderRadius.circular(8),
-                              selectedColor: Colors.white,
-                              fillColor: theme.colorScheme.primary,
-                              children: const [
-                                Text('kg', style: TextStyle(fontSize: 10, fontWeight: FontWeight.bold)),
-                                Text('g', style: TextStyle(fontSize: 10, fontWeight: FontWeight.bold)),
-                                Text('lb', style: TextStyle(fontSize: 10, fontWeight: FontWeight.bold)),
-                                Text('pcs', style: TextStyle(fontSize: 10, fontWeight: FontWeight.bold)),
-                              ],
-                            ),
-                          ],
-                        ),
-                      ],
-                    ),
-                    const SizedBox(height: AppSpacing.m),
-                    Row(
-                      children: [
-                        Expanded(
-                          child: TextFormField(
-                            controller: _weightController,
-                            textAlign: TextAlign.center,
-                            enabled: !_isHalf,
-                            decoration: InputDecoration(
-                              labelText: isPcs ? 'Quantity' : 'Weight',
-                              suffixText: isPcs ? 'pcs' : _unit.name,
-                              contentPadding: const EdgeInsets.symmetric(vertical: 8),
-                              errorText: (isPcs ? finalEffectiveQty : kgWeight) > widget.product.stockQuantity 
-                                ? 'Only ${widget.product.stockQuantity.toStringAsFixed(1)}${isPcs ? "pcs" : "kg"} available' 
-                                : null,
-                            ),
-                            keyboardType: const TextInputType.numberWithOptions(decimal: true),
-                            inputFormatters: [FilteringTextInputFormatter.allow(RegExp(r'[0-9.]'))],
-                            onChanged: (v) {
-                              setState(() => _weight = double.tryParse(v) ?? 0);
-                              _moneyController.clear(); // Clear money if manually typing weight
-                            },
-                            validator: (v) {
-                              if (_isHalf) return null;
-                              if (v == null || (double.tryParse(v) ?? 0) <= 0) return '!';
-                              final val = double.tryParse(v) ?? 0;
-                              final checkWeight = isPcs 
-                                  ? val 
-                                  : WeightConverter.convert(value: val, from: _unit, to: WeightUnit.kg);
-                              if (checkWeight > widget.product.stockQuantity) return 'Insufficient Stock';
-                              return null;
-                            },
-                          ),
-                        ),
-                        if (!isPcs) ...[
-                          const SizedBox(width: 12),
-                          Expanded(
-                            child: TextFormField(
-                              controller: _qtyController,
-                              textAlign: TextAlign.center,
-                              decoration: InputDecoration(
-                                labelText: 'Packs',
-                                suffixText: 'qty',
-                                contentPadding: const EdgeInsets.symmetric(vertical: 8),
-                                errorText: (kgWeight * _quantity) > widget.product.stockQuantity
-                                  ? 'Exceeds total stock'
-                                  : null,
-                              ),
-                              keyboardType: TextInputType.number,
-                              inputFormatters: [FilteringTextInputFormatter.digitsOnly],
-                              onChanged: (v) => setState(() => _quantity = int.tryParse(v) ?? 1),
-                              validator: (v) {
-                                if (v == null || (int.tryParse(v) ?? 0) <= 0) return '!';
-                                if ((kgWeight * (int.tryParse(v) ?? 1)) > widget.product.stockQuantity) return 'Exceeds stock';
-                                return null;
-                              },
-                            ),
-                          ),
-                        ],
-                      ],
-                    ),
-                    const SizedBox(height: AppSpacing.m),
-                    if (widget.product.stockQuantity <= 0)
+                    // Out of Stock Alert
+                    if (isOutOfStock)
                       Container(
                         padding: const EdgeInsets.all(8),
+                        margin: const EdgeInsets.only(bottom: AppSpacing.m),
                         decoration: BoxDecoration(color: Colors.red.withValues(alpha: 0.1), borderRadius: BorderRadius.circular(8)),
                         child: const Row(
                           mainAxisAlignment: MainAxisAlignment.center,
                           children: [
                             Icon(Icons.error_outline, color: Colors.red, size: 16),
                             SizedBox(width: 8),
-                            Text('FINISHED: OUT OF STOCK', style: TextStyle(color: Colors.red, fontWeight: FontWeight.bold, fontSize: 12)),
+                            Text('OUT OF STOCK', style: TextStyle(color: Colors.red, fontWeight: FontWeight.bold, fontSize: 12)),
                           ],
                         ),
                       ),
-                    const SizedBox(height: AppSpacing.m),
-                    Column(
-                      children: [
-                        Row(
-                          mainAxisAlignment: MainAxisAlignment.center,
-                          children: [
-                            if (hasPromo) ...[
-                              Text('₵${comparisonPrice.toStringAsFixed(2)}', 
-                                style: TextStyle(color: theme.colorScheme.onSurfaceVariant, decoration: TextDecoration.lineThrough, fontSize: 12)),
-                              const SizedBox(width: 6),
-                            ],
-                            Text('₵${finalPrice.toStringAsFixed(2)}/${isPcs ? "unit" : "kg"}', 
-                              style: TextStyle(color: hasPromo ? Colors.orange.shade800 : theme.colorScheme.primary, fontWeight: FontWeight.bold, fontSize: 14)),
-                          ],
-                        ),
-                        Text(
-                          'Total: ₵${total.toStringAsFixed(2)}',
-                          style: TextStyle(fontWeight: FontWeight.w900, fontSize: 24, color: theme.colorScheme.primary),
-                        ),
-                        if (_isHalf)
-                          const Text('(Half Bird Pricing Applied)', style: TextStyle(fontSize: 10, fontStyle: FontStyle.italic, color: Colors.grey)),
-                      ],
-                    ),
-                    const SizedBox(height: AppSpacing.m),
+
+                    // Add to Cart Button
                     SizedBox(
                       width: double.infinity,
+                      height: 50,
                       child: ElevatedButton(
-                        onPressed: (widget.product.stockQuantity <= 0 || (isPcs ? finalEffectiveQty : (kgWeight * _quantity)) > widget.product.stockQuantity)
+                        onPressed: (isOutOfStock || isExceedingStock)
                           ? null 
                           : () {
                             if (_formKey.currentState!.validate()) {
-                              final isWholesale = ref.read(isWholesaleProvider);
-                              
-                              // Calculate final normalized weight/qty for inventory
-                              double effectiveQty = _isHalf ? 0.5 : _weight;
-                              if (!isPcs && !_isHalf) {
-                                effectiveQty = WeightConverter.convert(value: _weight, from: _unit, to: WeightUnit.kg);
-                              }
-
-                              final double actualSalePrice = widget.product.getPrice(isWholesale, weight: isPcs ? 1.0 : effectiveQty, customer: widget.customer);
-                              
-                              double comparisonPrice = isWholesale ? (widget.product.wholesalePrice) : (widget.product.retailPrice);
-                              
-                              final String unitName = isPcs 
-                                  ? (['kg', 'g', 'lb', 'unit', 'pcs'].contains(widget.product.unit.toLowerCase()) ? 'pcs' : widget.product.unit) 
-                                  : _unit.name;
-                              widget.onAdd(effectiveQty * (_isHalf ? 1 : _quantity), actualSalePrice, comparisonPrice, unitName);
+                              widget.onAdd(totalPcsNeeded, basePrice, originalPrice, _selectedUnit);
                               Navigator.pop(context);
                             }
                           },
                         style: ElevatedButton.styleFrom(
                           backgroundColor: theme.colorScheme.primary,
                           foregroundColor: Colors.white,
-                          padding: const EdgeInsets.symmetric(vertical: 12),
-                          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(AppRadius.s)),
+                          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(AppRadius.m)),
+                          elevation: 0,
                         ),
-                        child: Text(widget.product.stockQuantity <= 0 ? 'ITEM FINISHED' : 'Add to Cart', style: const TextStyle(fontWeight: FontWeight.bold)),
+                        child: Text(
+                          isOutOfStock ? 'OUT OF STOCK' : 'Add to Cart', 
+                          style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16),
+                        ),
                       ),
                     ),
                   ],
@@ -3342,22 +3555,53 @@ class _PaymentDialogState extends ConsumerState<PaymentDialog> {
   void _addPayment() {
     if (_formKey.currentState!.validate()) {
       final amount = double.tryParse(_amountController.text) ?? 0;
-      // Allow zero amount for credit/debt sales
       if (amount < 0) return; 
 
+      final newPayment = PaymentDetail(
+        method: _selectedMethod,
+        amount: amount,
+        reference: _refController.text.isEmpty ? null : _refController.text,
+        isPaystack: false,
+      );
+
       setState(() {
-        _payments.add(PaymentDetail(
-          method: _selectedMethod,
-          amount: amount,
-          reference: _refController.text.isEmpty ? null : _refController.text,
-          isPaystack: false,
-        ));
+        _payments.add(newPayment);
         final paid = _payments.fold(0.0, (sum, p) => sum + p.amount);
         final remaining = (widget.totalAmount - paid).clamp(0.0, widget.totalAmount);
         _amountController.text = remaining > 0 ? remaining.toStringAsFixed(2) : '0.00';
         _refController.clear();
       });
+
+      // High-Speed Auto Complete: If invoice is fully paid, close and finish
+      final totalPaid = _payments.fold(0.0, (sum, p) => sum + p.amount);
+      if (totalPaid >= widget.totalAmount - 0.01) {
+        Navigator.pop(context);
+        widget.onComplete(_payments, _receiptUrl);
+      }
     }
+  }
+
+  Widget _buildQuickCashChip(String label, double val, double remaining) {
+    final theme = Theme.of(context);
+    final currentVal = double.tryParse(_amountController.text) ?? 0.0;
+    final isSelected = (currentVal - val).abs() < 0.01;
+
+    return ActionChip(
+      label: Text(label, style: TextStyle(
+        fontWeight: FontWeight.bold,
+        fontSize: 11,
+        color: isSelected ? Colors.white : theme.colorScheme.primary,
+      )),
+      backgroundColor: isSelected ? theme.colorScheme.primary : theme.colorScheme.primary.withValues(alpha: 0.08),
+      side: BorderSide(color: theme.colorScheme.primary.withValues(alpha: 0.3)),
+      padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 0),
+      visualDensity: VisualDensity.compact,
+      onPressed: () {
+        setState(() {
+          _amountController.text = val.toStringAsFixed(2);
+        });
+      },
+    );
   }
 
   @override
@@ -3475,13 +3719,13 @@ class _PaymentDialogState extends ConsumerState<PaymentDialog> {
                             controller: _amountController, 
                             textAlign: TextAlign.center,
                             decoration: InputDecoration(
-                              labelText: 'Amount to Apply', 
+                              labelText: 'Amount Received / Applied', 
                               prefixText: '₵ ', 
                               isDense: true,
                               helperText: isBank ? 'Customer will provide deposit slip later' : 'Enter 0 for full credit/debt sale',
                               helperStyle: const TextStyle(fontSize: 9),
                             ),
-                            style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
+                            style: const TextStyle(fontSize: 20, fontWeight: FontWeight.bold),
                             keyboardType: const TextInputType.numberWithOptions(decimal: true),
                             onChanged: (v) => setState(() {}),
                             validator: (v) {
@@ -3491,6 +3735,41 @@ class _PaymentDialogState extends ConsumerState<PaymentDialog> {
                               return null;
                             },
                           ),
+                          if (_selectedMethod == PaymentMethod.cash && remaining > 0) ...[
+                            const SizedBox(height: 8),
+                            Wrap(
+                              spacing: 6,
+                              runSpacing: 4,
+                              alignment: WrapAlignment.center,
+                              children: [
+                                _buildQuickCashChip('Exact', remaining, remaining),
+                                if (remaining <= 10) _buildQuickCashChip('₵10', 10, remaining),
+                                if (remaining <= 20) _buildQuickCashChip('₵20', 20, remaining),
+                                if (remaining <= 50) _buildQuickCashChip('₵50', 50, remaining),
+                                if (remaining <= 100) _buildQuickCashChip('₵100', 100, remaining),
+                                if (remaining <= 200) _buildQuickCashChip('₵200', 200, remaining),
+                                if (remaining <= 500) _buildQuickCashChip('₵500', 500, remaining),
+                              ],
+                            ),
+                            if ((double.tryParse(_amountController.text) ?? 0) > remaining) ...[
+                              const SizedBox(height: 10),
+                              Container(
+                                padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
+                                decoration: BoxDecoration(
+                                  color: AppColors.accentGreen.withValues(alpha: 0.12),
+                                  borderRadius: BorderRadius.circular(AppRadius.s),
+                                  border: Border.all(color: AppColors.accentGreen, width: 1.5),
+                                ),
+                                child: Row(
+                                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                                  children: [
+                                    const Text('CHANGE DUE:', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 12, color: AppColors.accentGreen)),
+                                    Text('₵${((double.tryParse(_amountController.text) ?? 0) - remaining).toStringAsFixed(2)}', style: const TextStyle(fontWeight: FontWeight.w900, fontSize: 16, color: AppColors.accentGreen)),
+                                  ],
+                                ),
+                              ),
+                            ],
+                          ],
                           const SizedBox(height: 12),
                           TextFormField(
                             controller: _refController,
@@ -3676,8 +3955,14 @@ class _PaymentDialogState extends ConsumerState<PaymentDialog> {
 class ReceiptSuccessDialog extends StatefulWidget {
   final SaleRecord sale;
   final WidgetRef ref;
+  final VoidCallback? onNextCustomer;
 
-  const ReceiptSuccessDialog({super.key, required this.sale, required this.ref});
+  const ReceiptSuccessDialog({
+    super.key, 
+    required this.sale, 
+    required this.ref,
+    this.onNextCustomer,
+  });
 
   @override
   State<ReceiptSuccessDialog> createState() => _ReceiptSuccessDialogState();
@@ -3686,14 +3971,15 @@ class ReceiptSuccessDialog extends StatefulWidget {
 class _ReceiptSuccessDialogState extends State<ReceiptSuccessDialog> {
   @override
   Widget build(BuildContext context) {
+    final screenSize = MediaQuery.of(context).size;
     return Dialog(
       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(AppRadius.l)),
       child: Container(
-        width: MediaQuery.of(context).size.width * 0.9,
-        constraints: const BoxConstraints(maxWidth: 400),
-        height: 520, // Compact but fits details
-        padding: const EdgeInsets.all(AppSpacing.l),
+        width: screenSize.width * 0.9,
+        constraints: BoxConstraints(maxWidth: 400, maxHeight: screenSize.height * 0.85),
+        padding: const EdgeInsets.all(AppSpacing.m),
         child: Column(
+          mainAxisSize: MainAxisSize.min,
           children: [
             Container(
               padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
@@ -3710,35 +3996,38 @@ class _ReceiptSuccessDialogState extends State<ReceiptSuccessDialog> {
                 ],
               ),
             ),
-            const SizedBox(height: 20),
+            const SizedBox(height: 12),
             // Digital Receipt Card
-            Expanded(
-              child: Container(
-                width: double.infinity,
-                padding: const EdgeInsets.all(AppSpacing.m),
-                decoration: BoxDecoration(
-                  color: Colors.white,
-                  borderRadius: BorderRadius.circular(AppRadius.s),
-                  border: Border.all(color: Colors.grey.shade200),
-                  boxShadow: [BoxShadow(color: Colors.black.withValues(alpha: 0.03), blurRadius: 10)],
-                ),
-                child: Column(
-                  children: [
-                    const Text('CITY COSMETICS', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16, letterSpacing: 1)),
-                    const Text('Digital Copy', style: TextStyle(fontSize: 10, color: Colors.grey)),
-                    if (widget.sale.balance > 0.01)
-                      Container(
-                        margin: const EdgeInsets.only(top: 8),
-                        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
-                        decoration: BoxDecoration(color: Colors.orange.shade800, borderRadius: BorderRadius.circular(4)),
-                        child: const Text('DEBT / CREDIT SALE', style: TextStyle(color: Colors.white, fontSize: 9, fontWeight: FontWeight.bold)),
-                      ),
-                    const Divider(height: 24),
-                    _receiptPreviewRow('Invoice ID', widget.sale.id.substring(widget.sale.id.length - 8).toUpperCase()),
-                    _receiptPreviewRow('Cashier', widget.sale.cashierName.split(' ')[0]),
-                    const Divider(height: 24),
-                    Expanded(
-                      child: ListView.builder(
+            Flexible(
+              child: SingleChildScrollView(
+                child: Container(
+                  width: double.infinity,
+                  padding: const EdgeInsets.all(AppSpacing.m),
+                  decoration: BoxDecoration(
+                    color: Colors.white,
+                    borderRadius: BorderRadius.circular(AppRadius.s),
+                    border: Border.all(color: Colors.grey.shade200),
+                    boxShadow: [BoxShadow(color: Colors.black.withValues(alpha: 0.03), blurRadius: 10)],
+                  ),
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      const Text('CITY COSMETICS', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16, letterSpacing: 1)),
+                      const Text('Digital Copy', style: TextStyle(fontSize: 10, color: Colors.grey)),
+                      if (widget.sale.balance > 0.01)
+                        Container(
+                          margin: const EdgeInsets.only(top: 8),
+                          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
+                          decoration: BoxDecoration(color: Colors.orange.shade800, borderRadius: BorderRadius.circular(4)),
+                          child: const Text('DEBT / CREDIT SALE', style: TextStyle(color: Colors.white, fontSize: 9, fontWeight: FontWeight.bold)),
+                        ),
+                      const Divider(height: 20),
+                      _receiptPreviewRow('Invoice ID', widget.sale.id.substring(widget.sale.id.length - 8).toUpperCase()),
+                      _receiptPreviewRow('Cashier', widget.sale.cashierName.split(' ')[0]),
+                      const Divider(height: 20),
+                      ListView.builder(
+                        shrinkWrap: true,
+                        physics: const NeverScrollableScrollPhysics(),
                         itemCount: widget.sale.items.length,
                         itemBuilder: (context, index) {
                           final item = widget.sale.items[index];
@@ -3761,88 +4050,141 @@ class _ReceiptSuccessDialogState extends State<ReceiptSuccessDialog> {
                           );
                         },
                       ),
-                    ),
-                    const Divider(height: 24),
-                    Row(
-                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                      children: [
-                        const Expanded(
-                          child: Text('TOTAL', 
-                            style: TextStyle(fontWeight: FontWeight.w900, fontSize: 14),
-                            maxLines: 1,
-                            overflow: TextOverflow.ellipsis,
+                      const Divider(height: 20),
+                      Row(
+                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                        children: [
+                          const Expanded(
+                            child: Text('TOTAL', 
+                              style: TextStyle(fontWeight: FontWeight.w900, fontSize: 14),
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                            ),
                           ),
+                          const SizedBox(width: 8),
+                          FittedBox(
+                            fit: BoxFit.scaleDown,
+                            child: Text('₵${widget.sale.totalAmount.toStringAsFixed(2)}', 
+                              style: const TextStyle(fontWeight: FontWeight.w900, fontSize: 18, color: Colors.black)),
+                          ),
+                        ],
+                      ),
+                      if (widget.sale.balance > 0.01) ...[
+                        const SizedBox(height: 4),
+                        Row(
+                          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                          children: [
+                            const Expanded(
+                              child: Text('AMOUNT PAID', 
+                                style: TextStyle(fontSize: 12, color: Colors.grey),
+                                maxLines: 1,
+                                overflow: TextOverflow.ellipsis,
+                              ),
+                            ),
+                            const SizedBox(width: 8),
+                            FittedBox(
+                              fit: BoxFit.scaleDown,
+                              child: Text('₵${widget.sale.amountPaid.toStringAsFixed(2)}', 
+                                style: const TextStyle(fontSize: 12, fontWeight: FontWeight.bold)),
+                            ),
+                          ],
                         ),
-                        const SizedBox(width: 8),
-                        FittedBox(
-                          fit: BoxFit.scaleDown,
-                          child: Text('₵${widget.sale.totalAmount.toStringAsFixed(2)}', 
-                            style: const TextStyle(fontWeight: FontWeight.w900, fontSize: 18, color: Colors.black)),
+                        const SizedBox(height: 4),
+                        Row(
+                          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                          children: [
+                            const Expanded(
+                              child: Text('BALANCE DUE (DEBT)', 
+                                style: TextStyle(fontSize: 11, color: Colors.red, fontWeight: FontWeight.bold),
+                                maxLines: 1,
+                                overflow: TextOverflow.ellipsis,
+                              ),
+                            ),
+                            const SizedBox(width: 8),
+                            FittedBox(
+                              fit: BoxFit.scaleDown,
+                              child: Text('₵${widget.sale.balance.toStringAsFixed(2)}', 
+                                style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w900, color: Colors.red)),
+                            ),
+                          ],
                         ),
                       ],
-                    ),
-                    if (widget.sale.balance > 0.01) ...[
-                      const SizedBox(height: 4),
-                      Row(
-                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                        children: [
-                          const Expanded(
-                            child: Text('AMOUNT PAID', 
-                              style: TextStyle(fontSize: 12, color: Colors.grey),
-                              maxLines: 1,
-                              overflow: TextOverflow.ellipsis,
-                            ),
-                          ),
-                          const SizedBox(width: 8),
-                          FittedBox(
-                            fit: BoxFit.scaleDown,
-                            child: Text('₵${widget.sale.amountPaid.toStringAsFixed(2)}', 
-                              style: const TextStyle(fontSize: 12, fontWeight: FontWeight.bold)),
-                          ),
-                        ],
+                      Builder(
+                        builder: (context) {
+                          final set = getAppreciationSet(widget.sale.id);
+                          return Column(
+                            children: [
+                              const SizedBox(height: 8),
+                              const Text('Thank you for shopping with us!', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 11)),
+                              const SizedBox(height: 4),
+                              Text(set.akanTwi, style: const TextStyle(fontSize: 9, fontStyle: FontStyle.italic, color: Colors.black87), textAlign: TextAlign.center),
+                              const SizedBox(height: 2),
+                              Text(set.hausaQuran, style: const TextStyle(fontSize: 9, fontStyle: FontStyle.italic, color: Colors.black87), textAlign: TextAlign.center),
+                              const SizedBox(height: 2),
+                              Text(set.bible, style: const TextStyle(fontSize: 9, fontStyle: FontStyle.italic, color: Colors.black87), textAlign: TextAlign.center),
+                            ],
+                          );
+                        },
                       ),
-                      const SizedBox(height: 4),
-                      Row(
-                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                        children: [
-                          const Expanded(
-                            child: Text('BALANCE DUE (DEBT)', 
-                              style: TextStyle(fontSize: 11, color: Colors.red, fontWeight: FontWeight.bold),
-                              maxLines: 1,
-                              overflow: TextOverflow.ellipsis,
+                      const SizedBox(height: 6),
+                      const Center(
+                        child: Row(
+                          mainAxisSize: MainAxisSize.min,
+                          crossAxisAlignment: CrossAxisAlignment.center,
+                          children: [
+                            Text(
+                              'by techRaven ',
+                              style: TextStyle(fontSize: 9, color: Colors.grey, fontStyle: FontStyle.italic),
                             ),
-                          ),
-                          const SizedBox(width: 8),
-                          FittedBox(
-                            fit: BoxFit.scaleDown,
-                            child: Text('₵${widget.sale.balance.toStringAsFixed(2)}', 
-                              style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w900, color: Colors.red)),
-                          ),
-                        ],
+                            Icon(Icons.email, size: 12, color: Colors.grey),
+                            SizedBox(width: 3),
+                            Text(
+                              'krasta1258@gmail.com',
+                              style: TextStyle(fontSize: 9, color: Colors.grey, fontStyle: FontStyle.italic),
+                            ),
+                          ],
+                        ),
                       ),
                     ],
-                  ],
+                  ),
                 ),
               ),
             ),
-            const SizedBox(height: 24),
-            SizedBox(
-              width: double.infinity,
-              child: ElevatedButton.icon(
-                onPressed: () => _showReceiptOptionsDialog(widget.sale),
-                icon: const Icon(Icons.receipt_long_rounded, size: 20),
-                label: const Text('VIEW RECEIPT OPTIONS', style: TextStyle(fontWeight: FontWeight.w900, letterSpacing: 1)),
-                style: ElevatedButton.styleFrom(
-                  backgroundColor: AppColors.accentOrange,
-                  foregroundColor: Colors.white,
-                  padding: const EdgeInsets.symmetric(vertical: 16),
+            const SizedBox(height: 12),
+            Row(
+              children: [
+                Expanded(
+                  flex: 3,
+                  child: ElevatedButton.icon(
+                    onPressed: () {
+                      if (widget.onNextCustomer != null) {
+                        widget.onNextCustomer!();
+                      } else {
+                        Navigator.of(context).popUntil((route) => route.settings.name == '/cashier' || route.isFirst);
+                      }
+                    },
+                    icon: const Icon(Icons.add_shopping_cart_rounded, size: 20),
+                    label: const Text('NEXT CUSTOMER', style: TextStyle(fontWeight: FontWeight.w900, letterSpacing: 1)),
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: AppColors.accentGreen,
+                      foregroundColor: Colors.white,
+                      padding: const EdgeInsets.symmetric(vertical: 14),
+                    ),
+                  ),
                 ),
-              ),
-            ),
-            const SizedBox(height: 8),
-            TextButton(
-              onPressed: () => Navigator.pop(context), 
-              child: const Text('CLOSE WINDOW', style: TextStyle(color: AppColors.textLight, fontWeight: FontWeight.bold, fontSize: 11)),
+                const SizedBox(width: 8),
+                Expanded(
+                  flex: 2,
+                  child: OutlinedButton.icon(
+                    onPressed: () => _showReceiptOptionsDialog(widget.sale),
+                    icon: const Icon(Icons.print_rounded, size: 18),
+                    label: const Text('RECEIPT', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 11)),
+                    style: OutlinedButton.styleFrom(
+                      padding: const EdgeInsets.symmetric(vertical: 14),
+                    ),
+                  ),
+                ),
+              ],
             ),
           ],
         ),

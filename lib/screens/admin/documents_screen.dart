@@ -12,7 +12,6 @@ import '../../widgets/app_sidebar.dart';
 import '../../services/menu_service.dart';
 import '../../services/user_provider.dart';
 import '../../widgets/responsive_layout.dart';
-import '../../models/user_model.dart';
 import '../../models/document_model.dart';
 import '../../services/document_provider.dart';
 import '../../widgets/role_pop_scope.dart';
@@ -28,12 +27,10 @@ class DocumentsScreen extends ConsumerWidget {
 
     final theme = Theme.of(context);
     final isDesktop = ResponsiveLayout.isDesktop(context);
-    final bool isAdmin = user.activeRoles.contains(UserRole.admin) || user.activeRoles.contains(UserRole.superAdmin);
     
-    final bool showScaffold = isAdmin && !isNested;
-    
-    final String currentRoute = isAdmin ? '/admin/documents' : 'butcher:documents';
-    final menuItems = ref.watch(isAdmin ? menuItemsProvider : butcherMenuItemsProvider);
+    final bool showScaffold = !isNested;
+    const String currentRoute = '/admin/documents';
+    final menuItems = ref.watch(menuItemsProvider);
 
     final documents = ref.watch(documentProvider);
 
@@ -125,7 +122,7 @@ class DocumentsScreen extends ConsumerWidget {
             userRole: user.activePrimaryRole.name.toUpperCase(),
             currentRoute: currentRoute,
             items: menuItems,
-            onTap: (route) => MenuService.navigate(context, route, currentRoute),
+            onTap: (route) => MenuService.navigate(context, ref, route, currentRoute),
           ),
         ),
         body: Row(
@@ -137,7 +134,7 @@ class DocumentsScreen extends ConsumerWidget {
                 userRole: user.activePrimaryRole.name.toUpperCase(),
                 currentRoute: currentRoute,
                 items: menuItems,
-                onTap: (route) => MenuService.navigate(context, route, currentRoute),
+                onTap: (route) => MenuService.navigate(context, ref, route, currentRoute),
               ),
             Expanded(child: content),
           ],

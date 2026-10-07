@@ -14,6 +14,11 @@ class Customer {
   final double? specialDiscountPercentage;
   final DateTime? lastPromoDate;
   final bool isDeleted;
+  final String? businessName;
+  final String status; // 'pending_approval', 'active', 'suspended'
+  final String priceTier; // 'retail', 'wholesale', 'vip'
+  final double creditLimit;
+  final String? passcode;
 
   Customer({
     required this.id,
@@ -31,7 +36,15 @@ class Customer {
     this.loyaltyPoints = 0.0,
     this.visitCount = 0,
     this.isDeleted = false,
+    this.businessName,
+    this.status = 'active',
+    this.priceTier = 'retail',
+    this.creditLimit = 0.0,
+    this.passcode,
   });
+
+  bool get isPendingApproval => status == 'pending_approval';
+  bool get isActiveCustomer => status == 'active' || status.isEmpty;
 
   bool get hasUsedDailyPromoToday {
     if (lastPromoDate == null) return false;
@@ -57,6 +70,11 @@ class Customer {
     double? loyaltyPoints,
     int? visitCount,
     bool? isDeleted,
+    String? businessName,
+    String? status,
+    String? priceTier,
+    double? creditLimit,
+    String? passcode,
   }) {
     return Customer(
       id: id ?? this.id,
@@ -74,6 +92,11 @@ class Customer {
       loyaltyPoints: loyaltyPoints ?? this.loyaltyPoints,
       visitCount: visitCount ?? this.visitCount,
       isDeleted: isDeleted ?? this.isDeleted,
+      businessName: businessName ?? this.businessName,
+      status: status ?? this.status,
+      priceTier: priceTier ?? this.priceTier,
+      creditLimit: creditLimit ?? this.creditLimit,
+      passcode: passcode ?? this.passcode,
     );
   }
 
@@ -103,6 +126,11 @@ class Customer {
       loyaltyPoints: (map['loyalty_points'] as num? ?? 0.0).toDouble(),
       visitCount: (map['visit_count'] as num? ?? 0).toInt(),
       isDeleted: map['is_deleted'] == true,
+      businessName: map['business_name']?.toString(),
+      status: map['status']?.toString() ?? 'active',
+      priceTier: map['price_tier']?.toString() ?? (map['is_wholesaler'] == true ? 'wholesale' : 'retail'),
+      creditLimit: (map['credit_limit'] as num? ?? 0.0).toDouble(),
+      passcode: map['passcode']?.toString(),
     );
   }
 
@@ -123,6 +151,11 @@ class Customer {
       'loyalty_points': loyaltyPoints,
       'visit_count': visitCount,
       'is_deleted': isDeleted,
+      'business_name': businessName,
+      'status': status,
+      'price_tier': priceTier,
+      'credit_limit': creditLimit,
+      'passcode': passcode,
     };
   }
 }

@@ -5,13 +5,13 @@ import 'package:hive_flutter/hive_flutter.dart';
 import 'package:connectivity_plus/connectivity_plus.dart';
 import '../core/uuid_utils.dart';
 import '../models/product.dart';
-import 'supabase_product_service.dart';
+import '../models/system_models.dart';
 import 'user_provider.dart';
 import 'notification_service.dart';
 import 'audit_service.dart';
 import 'offline_sync_service.dart';
-import '../models/system_models.dart';
 import '../core/supabase_config.dart';
+import 'supabase_product_service.dart' show productServiceProvider;
 
 abstract class ProductService {
   Future<List<Product>> getProducts(String branchCode);
@@ -24,10 +24,6 @@ abstract class ProductService {
   Future<String?> uploadProductImage(Uint8List bytes, String fileName);
   Stream<List<Product>> watchProducts(String branchCode);
 }
-
-final productServiceProvider = Provider<ProductService>((ref) {
-  return SupabaseProductService();
-});
 
 // Moved to top to resolve potential circular resolution issues
 final productsFutureProvider = StateNotifierProvider<ProductNotifier, AsyncValue<List<Product>>>((ref) {
@@ -99,15 +95,24 @@ class ProductNotifier extends StateNotifier<AsyncValue<List<Product>>> {
     if (user != null && user.branchCode != null) {
       _subscription = _service.watchProducts(user.branchCode!).listen(
         (products) {
-          state = AsyncValue.data(products);
-          _saveToCache(products); // Persist for next offline session
+          if (products.isNotEmpty || !state.hasValue) {
+            state = AsyncValue.data(products);
+            _saveToCache(products); // Persist for next offline session
+          }
           _checkStockAlerts(products);
         },
-        onError: (e, st) {
-          debugPrint('Product Stream Connection Error (Resuming?): $e');
-          // If we already have data, don't trigger error state (avoids red screen)
-          if (!state.hasValue) {
-             state = AsyncValue.error(e, st);
+        onError: (e, st) async {
+          debugPrint('Product Stream Connection Warning (Resuming via static fetch): $e');
+          try {
+            final staticProducts = await _service.getProducts(user.branchCode!);
+            if (mounted) {
+              state = AsyncValue.data(staticProducts);
+              _saveToCache(staticProducts);
+            }
+          } catch (_) {
+            if (!state.hasValue) {
+              _loadFromCache();
+            }
           }
         },
         cancelOnError: false,
@@ -179,8 +184,15 @@ class ProductNotifier extends StateNotifier<AsyncValue<List<Product>>> {
   }
 
   Future<void> updateProduct(Product updatedProduct) async {
+    // Optimistically update local state & cache immediately so UI reflects changes instantly
+    state.whenData((products) {
+      final newList = products.map((p) => p.id == updatedProduct.id ? updatedProduct : p).toList();
+      state = AsyncValue.data(newList);
+      _saveToCache(newList);
+    });
+
     try {
-      final oldProduct = state.value?.firstWhere((p) => p.id == updatedProduct.id);
+      final oldProduct = state.value?.firstWhere((p) => p.id == updatedProduct.id, orElse: () => updatedProduct);
       
       // Audit Log
       await AuditService.log(
@@ -203,12 +215,6 @@ class ProductNotifier extends StateNotifier<AsyncValue<List<Product>>> {
         actionType: 'UPDATE_PRODUCT',
         data: updatedProduct.toJson(),
       );
-
-      state.whenData((products) {
-        final newList = products.map((p) => p.id == updatedProduct.id ? updatedProduct : p).toList();
-        state = AsyncValue.data(newList);
-        _saveToCache(newList);
-      });
     }
   }
 
@@ -274,7 +280,8 @@ class ProductNotifier extends StateNotifier<AsyncValue<List<Product>>> {
         }
       }
 
-      final newQuantity = product.stockQuantity + quantityChange;
+      final double calculatedVal = product.stockQuantity + quantityChange;
+      final newQuantity = product.isUnlimited ? product.stockQuantity : (calculatedVal < 0 ? 0.0 : calculatedVal);
       // Only track positive additions to stock for "added today"
       final newDailyAdded = quantityChange > 0 ? (currentDailyAdded + quantityChange) : currentDailyAdded;
       

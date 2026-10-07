@@ -28,6 +28,7 @@ class LocalProducts extends Table {
   TextColumn get category => text()();
   RealColumn get stockQuantity => real()();
   TextColumn get unit => text()();
+  TextColumn get size => text().nullable()();
   
   @override
   Set<Column> get primaryKey => {id};

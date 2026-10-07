@@ -51,24 +51,54 @@ class SupabaseCustomerService {
         .eq('id', customer.id);
   }
 
+  Future<void> approveCustomer(String customerId, {double creditLimit = 0.0, String priceTier = 'wholesale'}) async {
+    try {
+      await _client.from('customers').update({
+        'status': 'active',
+        'credit_limit': creditLimit,
+        'price_tier': priceTier,
+      }).eq('id', customerId);
+    } catch (e) {
+      debugPrint('Error approving customer: $e');
+      rethrow;
+    }
+  }
+
+  Future<void> rejectCustomer(String customerId) async {
+    try {
+      await _client.from('customers').update({
+        'status': 'suspended',
+      }).eq('id', customerId);
+    } catch (e) {
+      debugPrint('Error rejecting customer: $e');
+      rethrow;
+    }
+  }
+
   Future<void> deleteCustomer(String id) async {
     await _client.from('customers').delete().eq('id', id);
   }
 
   Stream<List<Customer>> watchCustomers(String branchCode) {
-    if (branchCode.isNotEmpty) {
+    try {
+      if (branchCode.isNotEmpty) {
+        return _client
+            .from('customers')
+            .stream(primaryKey: ['id'])
+            .eq('branch_code', branchCode)
+            .order('name', ascending: true)
+            .map((data) => data.map((json) => Customer.fromJson(json)).where((c) => !c.isDeleted).toList())
+            .handleError((e, st) => <Customer>[]);
+      }
+
       return _client
           .from('customers')
           .stream(primaryKey: ['id'])
-          .eq('branch_code', branchCode)
           .order('name', ascending: true)
-          .map((data) => data.map((json) => Customer.fromJson(json)).where((c) => !c.isDeleted).toList());
+          .map((data) => data.map((json) => Customer.fromJson(json)).where((c) => !c.isDeleted).toList())
+          .handleError((e, st) => <Customer>[]);
+    } catch (_) {
+      return Stream.value([]);
     }
-
-    return _client
-        .from('customers')
-        .stream(primaryKey: ['id'])
-        .order('name', ascending: true)
-        .map((data) => data.map((json) => Customer.fromJson(json)).where((c) => !c.isDeleted).toList());
   }
 }

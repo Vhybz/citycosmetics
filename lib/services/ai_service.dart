@@ -74,9 +74,7 @@ class AiService {
     final name = user?.firstName ?? 'there';
 
     String roleSpecificInstructions = "";
-    if (role == UserRole.butcher) {
-      roleSpecificInstructions = "SOP: Manage stock inventory, inspect product batches, and attach barcodes.";
-    } else if (role == UserRole.cashier) {
+    if (role == UserRole.cashier) {
       roleSpecificInstructions = "SOP: Scan barcodes to verify stock, manage debts via customer profiles, and process Bank Deposits carefully.";
     } else if (role == UserRole.admin || role == UserRole.superAdmin) {
       roleSpecificInstructions = "SOP: Monitor net profit, verify bank transfers, and manage staff permissions.";

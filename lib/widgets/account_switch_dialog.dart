@@ -430,7 +430,6 @@ class _AccountSwitchDialogState extends ConsumerState<AccountSwitchDialog> {
     switch (role) {
       case UserRole.superAdmin: return Colors.black;
       case UserRole.admin: return Colors.purple;
-      case UserRole.butcher: return AppColors.primaryMaroon;
       case UserRole.cashier: return Colors.blue;
     }
   }
@@ -439,7 +438,6 @@ class _AccountSwitchDialogState extends ConsumerState<AccountSwitchDialog> {
     switch (role) {
       case UserRole.superAdmin: return Icons.security;
       case UserRole.admin: return Icons.admin_panel_settings;
-      case UserRole.butcher: return Icons.restaurant;
       case UserRole.cashier: return Icons.point_of_sale;
     }
   }

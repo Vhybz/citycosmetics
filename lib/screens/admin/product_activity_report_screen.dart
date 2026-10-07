@@ -5,7 +5,7 @@ import '../../widgets/main_app_bar.dart';
 import '../../widgets/app_sidebar.dart';
 import '../../widgets/role_pop_scope.dart';
 import '../../widgets/responsive_layout.dart';
-import '../../models/product.dart';
+import 'package:citypos/models/product.dart';
 import '../../models/sale_model.dart';
 import '../../models/system_models.dart';
 import '../../services/product_service.dart';
@@ -14,6 +14,28 @@ import '../../services/system_provider.dart';
 import '../../services/report_service.dart';
 import '../../services/user_provider.dart';
 import '../../services/menu_service.dart';
+
+class ProductActivityReportData {
+  final Product product;
+  final double totalIntakeQty;
+  final List<StockHistory> intakeEntries;
+  final DateTime? lastIntakeDate;
+  final double totalQtySold;
+  final double totalRevenue;
+  final List<Map<String, dynamic>> salesBreakdown;
+  final double remainingStock;
+
+  ProductActivityReportData({
+    required this.product,
+    required this.totalIntakeQty,
+    required this.intakeEntries,
+    this.lastIntakeDate,
+    required this.totalQtySold,
+    required this.totalRevenue,
+    required this.salesBreakdown,
+    required this.remainingStock,
+  });
+}
 
 class ProductActivityReportScreen extends ConsumerStatefulWidget {
   const ProductActivityReportScreen({super.key});
@@ -503,7 +525,7 @@ class _ProductActivityReportScreenState extends ConsumerState<ProductActivityRep
                   userRole: user.activePrimaryRole.name.toUpperCase(),
                   currentRoute: currentRoute,
                   items: ref.watch(menuItemsProvider),
-                  onTap: (route) => MenuService.navigate(context, route, currentRoute),
+                  onTap: (route) => MenuService.navigate(context, ref, route, currentRoute),
                 ),
               ),
         body: Row(
@@ -515,7 +537,7 @@ class _ProductActivityReportScreenState extends ConsumerState<ProductActivityRep
                 userRole: user.activePrimaryRole.name.toUpperCase(),
                 currentRoute: currentRoute,
                 items: ref.watch(menuItemsProvider),
-                onTap: (route) => MenuService.navigate(context, route, currentRoute),
+                onTap: (route) => MenuService.navigate(context, ref, route, currentRoute),
               ),
             Expanded(
               child: SingleChildScrollView(
@@ -837,11 +859,17 @@ class _ProductActivityReportScreenState extends ConsumerState<ProductActivityRep
     double qtyKg, 
     double qtyUnits,
   ) {
-    if (qtyKg > 0 && qtyUnits > 0) {
+    if (qtyUnits > 0 && qtyKg > 0) {
       return (
-        primaryValue: qtyKg.toStringAsFixed(1),
-        primaryUnit: 'kg',
-        secondaryText: '+ ${qtyUnits.toStringAsFixed(1)} units',
+        primaryValue: qtyUnits % 1 == 0 ? qtyUnits.toInt().toString() : qtyUnits.toStringAsFixed(1),
+        primaryUnit: 'units',
+        secondaryText: '+ ${qtyKg.toStringAsFixed(1)} kg',
+      );
+    } else if (qtyUnits > 0) {
+      return (
+        primaryValue: qtyUnits % 1 == 0 ? qtyUnits.toInt().toString() : qtyUnits.toStringAsFixed(1),
+        primaryUnit: 'units',
+        secondaryText: null,
       );
     } else if (qtyKg > 0) {
       return (
@@ -849,16 +877,10 @@ class _ProductActivityReportScreenState extends ConsumerState<ProductActivityRep
         primaryUnit: 'kg',
         secondaryText: null,
       );
-    } else if (qtyUnits > 0) {
-      return (
-        primaryValue: qtyUnits.toStringAsFixed(1),
-        primaryUnit: 'units',
-        secondaryText: null,
-      );
     } else {
       return (
-        primaryValue: '0.0',
-        primaryUnit: 'kg',
+        primaryValue: '0',
+        primaryUnit: 'Pcs',
         secondaryText: null,
       );
     }

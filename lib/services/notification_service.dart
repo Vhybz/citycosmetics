@@ -126,7 +126,7 @@ class NotificationNotifier extends StateNotifier<List<SystemNotification>> {
     );
 
     // 3. If it's a critical alert, send SMS to Admin (Works even if app is closed/offline)
-    final criticalKeywords = ['BUTCHER', 'RECTIFIED', 'URGENT', 'CORRECTION'];
+    final criticalKeywords = ['RECTIFIED', 'URGENT', 'CORRECTION'];
     bool isCritical = criticalKeywords.any((k) => title.toUpperCase().contains(k));
     
     // Safety Guard: Explicitly block ANY title containing "STOCK" or "INVENTORY" from sending automated SMS

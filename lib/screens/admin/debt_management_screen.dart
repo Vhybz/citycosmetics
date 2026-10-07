@@ -99,7 +99,7 @@ class _DebtManagementScreenState extends ConsumerState<DebtManagementScreen> {
                   userRole: user.activePrimaryRole.name.toUpperCase(),
                   currentRoute: currentRoute,
                   items: MenuService.getMenuItemsForUser(user),
-                  onTap: (route) => MenuService.navigate(context, route, currentRoute),
+                  onTap: (route) => MenuService.navigate(context, ref, route, currentRoute),
                 ),
               ),
         body: Row(
@@ -111,7 +111,7 @@ class _DebtManagementScreenState extends ConsumerState<DebtManagementScreen> {
                 userRole: user.activePrimaryRole.name.toUpperCase(),
                 currentRoute: currentRoute,
                 items: MenuService.getMenuItemsForUser(user),
-                onTap: (route) => MenuService.navigate(context, route, currentRoute),
+                onTap: (route) => MenuService.navigate(context, ref, route, currentRoute),
               ),
             Expanded(
               child: Padding(

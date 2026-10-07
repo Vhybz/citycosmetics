@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:geolocator/geolocator.dart';
 import '../../core/constants.dart';
 import '../../widgets/main_app_bar.dart';
 import '../../widgets/responsive_layout.dart';
@@ -10,6 +11,7 @@ import '../../models/user_model.dart';
 import '../../services/theme_provider.dart';
 import '../../services/branch_provider.dart';
 import '../../services/product_seeder.dart';
+import '../../services/app_settings_provider.dart';
 import '../../widgets/role_pop_scope.dart';
 
 class SystemSettingsScreen extends ConsumerStatefulWidget {
@@ -46,7 +48,7 @@ class _SystemSettingsScreenState extends ConsumerState<SystemSettingsScreen> {
                   userRole: user.activePrimaryRole.name.toUpperCase(),
                   currentRoute: currentRoute,
                   items: MenuService.getMenuItemsForUser(user),
-                  onTap: (route) => MenuService.navigate(context, route, currentRoute),
+                  onTap: (route) => MenuService.navigate(context, ref, route, currentRoute),
                 ),
               ),
         body: Row(
@@ -58,7 +60,7 @@ class _SystemSettingsScreenState extends ConsumerState<SystemSettingsScreen> {
                 userRole: user.activePrimaryRole.name.toUpperCase(),
                 currentRoute: currentRoute,
                 items: MenuService.getMenuItemsForUser(user),
-                onTap: (route) => MenuService.navigate(context, route, currentRoute),
+                onTap: (route) => MenuService.navigate(context, ref, route, currentRoute),
               ),
             Expanded(
               child: SingleChildScrollView(
@@ -95,10 +97,10 @@ class _SystemSettingsScreenState extends ConsumerState<SystemSettingsScreen> {
                           'Shop Identification',
                           Icons.business_rounded,
                           [
-                            _settingTile(context, Icons.store_rounded, 'Branch Name', currentBranch?.name ?? 'CITY COSMETICS POS'),
-                            _settingTile(context, Icons.location_on_rounded, 'Branch Location', currentBranch?.location ?? 'HQ'),
-                            _settingTile(context, Icons.gps_fixed_rounded, 'Digital Address (GPS)', 'BS-0006-1566'),
-                            _settingTile(context, Icons.phone_android_rounded, 'Emergency Contacts', '0209276200 / 0243672146'),
+                            _settingTile(context, Icons.store_rounded, 'Branch Name', currentBranch?.name ?? 'CITY COSMETICS'),
+                            _settingTile(context, Icons.location_on_rounded, 'Branch Location', currentBranch?.location ?? 'Sunyani, directly opposite Sweet Touch Restaurant'),
+                            _buildGpsCoordinatesTile(context),
+                            _settingTile(context, Icons.phone_android_rounded, 'Store Contact', '0542562486'),
                           ],
                         ),
                         _buildSection(
@@ -108,7 +110,7 @@ class _SystemSettingsScreenState extends ConsumerState<SystemSettingsScreen> {
                           [
                             _settingTile(context, Icons.currency_exchange_rounded, 'System Currency', 'Ghana Cedi (GHS)'),
                             _settingTile(context, Icons.percent_rounded, 'VAT/Tax Rate', '15.0%'),
-                            _settingTile(context, Icons.auto_awesome_rounded, 'Brand Slogan', 'Uncompromising Quality, Unforgettable Taste'),
+                            _settingTile(context, Icons.auto_awesome_rounded, 'Brand Slogan', 'Quality Beauty Products from City Cosmetics'),
                           ],
                         ),
                         const SizedBox(height: AppSpacing.xl),
@@ -213,7 +215,7 @@ class _SystemSettingsScreenState extends ConsumerState<SystemSettingsScreen> {
     );
   }
 
-  Widget _settingTile(BuildContext context, IconData icon, String label, String value, {Color? color}) {
+  Widget _settingTile(BuildContext context, IconData icon, String label, String value, {Color? color, VoidCallback? onTap}) {
     final theme = Theme.of(context);
     final isDark = theme.brightness == Brightness.dark;
     
@@ -230,9 +232,7 @@ class _SystemSettingsScreenState extends ConsumerState<SystemSettingsScreen> {
       title: Text(label, style: TextStyle(fontSize: 13, color: theme.colorScheme.onSurfaceVariant, fontWeight: FontWeight.w500)),
       subtitle: Text(value, style: TextStyle(fontWeight: FontWeight.bold, color: theme.colorScheme.onSurface, fontSize: 14)),
       trailing: Icon(Icons.arrow_forward_ios_rounded, size: 14, color: theme.dividerColor),
-      onTap: () {
-        // Future: Show individual edit dialogs
-      },
+      onTap: onTap,
     );
   }
 
@@ -260,24 +260,87 @@ class _SystemSettingsScreenState extends ConsumerState<SystemSettingsScreen> {
             ),
             child: const Text('RUN SEEDER', style: TextStyle(color: Colors.white, fontSize: 10, fontWeight: FontWeight.bold)),
           ),
-      onTap: _isSeeding ? null : () async {
-        setState(() => _isSeeding = true);
-        try {
-          await ref.read(productSeederProvider).seedProducts();
-          if (context.mounted) {
-            ScaffoldMessenger.of(context).showSnackBar(
-              const SnackBar(content: Text('Product catalog populated successfully!'), backgroundColor: Colors.green),
-            );
-          }
-        } catch (e) {
-          if (context.mounted) {
-            ScaffoldMessenger.of(context).showSnackBar(
-              SnackBar(content: Text('Error: $e'), backgroundColor: Colors.red),
-            );
-          }
-        } finally {
-          if (mounted) setState(() => _isSeeding = false);
-        }
+      onTap: _isSeeding ? null : () {
+        showDialog(
+          context: context,
+          builder: (context) => AlertDialog(
+            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(AppRadius.l)),
+            title: const Row(
+              children: [
+                Icon(Icons.inventory_2_rounded, color: Colors.blue),
+                SizedBox(width: 10),
+                Text('Product Catalog & Stock Defaults'),
+              ],
+            ),
+            content: const Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  'Choose how you want to load default categories or reset product quantities:',
+                  style: TextStyle(fontSize: 13),
+                ),
+                SizedBox(height: 12),
+                Text('• Seed Catalog: Populates default categories/products with 0.0 Pcs initial stock.', style: TextStyle(fontSize: 11, color: Colors.grey)),
+                SizedBox(height: 6),
+                Text('• Reset All to 0 Pcs: Sets ALL existing products store & warehouse stock to 0.0 Pcs.', style: TextStyle(fontSize: 11, color: Colors.grey)),
+              ],
+            ),
+            actions: [
+              TextButton(
+                onPressed: () => Navigator.pop(context),
+                child: const Text('CANCEL'),
+              ),
+              OutlinedButton(
+                onPressed: () async {
+                  Navigator.pop(context);
+                  setState(() => _isSeeding = true);
+                  try {
+                    await ref.read(productSeederProvider).seedProducts();
+                    if (context.mounted) {
+                      ScaffoldMessenger.of(context).showSnackBar(
+                        const SnackBar(content: Text('Catalog seeded with 0.0 Pcs stock defaults!'), backgroundColor: Colors.green),
+                      );
+                    }
+                  } catch (e) {
+                    if (context.mounted) {
+                      ScaffoldMessenger.of(context).showSnackBar(
+                        SnackBar(content: Text('Error: $e'), backgroundColor: Colors.red),
+                      );
+                    }
+                  } finally {
+                    if (mounted) setState(() => _isSeeding = false);
+                  }
+                },
+                child: const Text('SEED CATALOG (0 PCS)'),
+              ),
+              ElevatedButton(
+                style: ElevatedButton.styleFrom(backgroundColor: Colors.red, foregroundColor: Colors.white),
+                onPressed: () async {
+                  Navigator.pop(context);
+                  setState(() => _isSeeding = true);
+                  try {
+                    await ref.read(productSeederProvider).resetAllStockToZero();
+                    if (context.mounted) {
+                      ScaffoldMessenger.of(context).showSnackBar(
+                        const SnackBar(content: Text('✅ All product quantities reset to 0.0 Pcs successfully!'), backgroundColor: Colors.green),
+                      );
+                    }
+                  } catch (e) {
+                    if (context.mounted) {
+                      ScaffoldMessenger.of(context).showSnackBar(
+                        SnackBar(content: Text('Error resetting stock: $e'), backgroundColor: Colors.red),
+                      );
+                    }
+                  } finally {
+                    if (mounted) setState(() => _isSeeding = false);
+                  }
+                },
+                child: const Text('RESET ALL TO 0 PCS'),
+              ),
+            ],
+          ),
+        );
       },
     );
   }
@@ -407,6 +470,163 @@ class _SystemSettingsScreenState extends ConsumerState<SystemSettingsScreen> {
       trailing: OutlinedButton(
         onPressed: () => Navigator.pushNamed(context, '/profile'),
         child: const Text('EDIT'),
+      ),
+    );
+  }
+
+  Widget _buildGpsCoordinatesTile(BuildContext context) {
+    final settings = ref.watch(appSettingsProvider);
+    return _settingTile(
+      context,
+      Icons.my_location_rounded,
+      'Store GPS Coordinates & Radius',
+      '${settings.storeLat.toStringAsFixed(5)}, ${settings.storeLon.toStringAsFixed(5)} (${settings.storeRadiusMeters.toInt()}m radius)',
+      color: Colors.blue,
+      onTap: () => _showGpsCoordinatesDialog(context, settings),
+    );
+  }
+
+  void _showGpsCoordinatesDialog(BuildContext context, AppSettings settings) {
+    final latController = TextEditingController(text: settings.storeLat.toString());
+    final lonController = TextEditingController(text: settings.storeLon.toString());
+    final radiusController = TextEditingController(text: settings.storeRadiusMeters.toInt().toString());
+    bool isFetchingGps = false;
+
+    showDialog(
+      context: context,
+      builder: (context) => StatefulBuilder(
+        builder: (context, setDialogState) {
+          return AlertDialog(
+            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(AppRadius.l)),
+            title: const Row(
+              children: [
+                Icon(Icons.my_location_rounded, color: Colors.blue),
+                SizedBox(width: 10),
+                Text('Set Store Location'),
+              ],
+            ),
+            content: SingleChildScrollView(
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  const Text(
+                    'Staff check-in verification requires staff to be within radius of these coordinates.',
+                    style: TextStyle(fontSize: 12, color: Colors.grey),
+                  ),
+                  const SizedBox(height: 16),
+                  TextField(
+                    controller: latController,
+                    keyboardType: const TextInputType.numberWithOptions(decimal: true, signed: true),
+                    decoration: const InputDecoration(
+                      labelText: 'Latitude',
+                      hintText: 'e.g. 7.35134',
+                      prefixIcon: Icon(Icons.location_on_outlined),
+                    ),
+                  ),
+                  const SizedBox(height: 12),
+                  TextField(
+                    controller: lonController,
+                    keyboardType: const TextInputType.numberWithOptions(decimal: true, signed: true),
+                    decoration: const InputDecoration(
+                      labelText: 'Longitude',
+                      hintText: 'e.g. -2.31961',
+                      prefixIcon: Icon(Icons.explore_outlined),
+                    ),
+                  ),
+                  const SizedBox(height: 12),
+                  TextField(
+                    controller: radiusController,
+                    keyboardType: TextInputType.number,
+                    decoration: const InputDecoration(
+                      labelText: 'Allowed Check-In Radius (meters)',
+                      hintText: 'e.g. 50',
+                      prefixIcon: Icon(Icons.radar_outlined),
+                    ),
+                  ),
+                  const SizedBox(height: 16),
+                  SizedBox(
+                    width: double.infinity,
+                    child: OutlinedButton.icon(
+                      onPressed: isFetchingGps
+                          ? null
+                          : () async {
+                              setDialogState(() => isFetchingGps = true);
+                              try {
+                                bool serviceEnabled = await Geolocator.isLocationServiceEnabled();
+                                if (!serviceEnabled) {
+                                  if (context.mounted) {
+                                    ScaffoldMessenger.of(context).showSnackBar(
+                                      const SnackBar(content: Text('Please turn on GPS on your device.')),
+                                    );
+                                  }
+                                  return;
+                                }
+                                LocationPermission permission = await Geolocator.checkPermission();
+                                if (permission == LocationPermission.denied) {
+                                  permission = await Geolocator.requestPermission();
+                                }
+                                final pos = await Geolocator.getCurrentPosition(
+                                  locationSettings: const LocationSettings(accuracy: LocationAccuracy.high),
+                                );
+                                latController.text = pos.latitude.toStringAsFixed(5);
+                                lonController.text = pos.longitude.toStringAsFixed(5);
+                              } catch (e) {
+                                if (context.mounted) {
+                                  ScaffoldMessenger.of(context).showSnackBar(
+                                    SnackBar(content: Text('GPS Error: $e')),
+                                  );
+                                }
+                              } finally {
+                                setDialogState(() => isFetchingGps = false);
+                              }
+                            },
+                      icon: isFetchingGps
+                          ? const SizedBox(width: 16, height: 16, child: CircularProgressIndicator(strokeWidth: 2))
+                          : const Icon(Icons.gps_fixed_rounded),
+                      label: Text(isFetchingGps ? 'GETTING CURRENT LOCATION...' : 'USE MY CURRENT LOCATION'),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            actions: [
+              TextButton(
+                onPressed: () => Navigator.pop(context),
+                child: const Text('CANCEL'),
+              ),
+              ElevatedButton(
+                onPressed: () {
+                  final lat = double.tryParse(latController.text.trim());
+                  final lon = double.tryParse(lonController.text.trim());
+                  final radius = double.tryParse(radiusController.text.trim());
+
+                  if (lat == null || lon == null) {
+                    ScaffoldMessenger.of(context).showSnackBar(
+                      const SnackBar(content: Text('Please enter valid latitude and longitude.')),
+                    );
+                    return;
+                  }
+
+                  ref.read(appSettingsProvider.notifier).updateStoreCoordinates(
+                        lat: lat,
+                        lon: lon,
+                        radius: radius ?? 50.0,
+                      );
+
+                  Navigator.pop(context);
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    const SnackBar(
+                      content: Text('✅ Store GPS coordinates updated successfully!'),
+                      backgroundColor: Colors.green,
+                    ),
+                  );
+                },
+                child: const Text('SAVE LOCATION'),
+              ),
+            ],
+          );
+        },
       ),
     );
   }

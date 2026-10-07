@@ -9,7 +9,6 @@ import '../services/product_service.dart';
 import '../services/expense_provider.dart';
 import '../services/branch_provider.dart';
 import '../services/transfer_provider.dart';
-import '../services/butcher_service.dart';
 import '../services/auth_provider.dart';
 import 'account_switch_dialog.dart';
 
@@ -19,6 +18,7 @@ class SidebarItem {
   final String route;
   final bool isCatchy;
   final int? badgeCount;
+  final String category;
 
   SidebarItem({
     required this.icon, 
@@ -26,6 +26,7 @@ class SidebarItem {
     required this.route,
     this.isCatchy = false,
     this.badgeCount,
+    this.category = 'General',
   });
 }
 
@@ -54,11 +55,22 @@ class AppSidebar extends ConsumerStatefulWidget {
 class _AppSidebarState extends ConsumerState<AppSidebar> {
   String _searchQuery = '';
   final TextEditingController _searchController = TextEditingController();
+  final Set<String> _collapsedCategories = {};
 
   @override
   void dispose() {
     _searchController.dispose();
     super.dispose();
+  }
+
+  void _toggleCategory(String category) {
+    setState(() {
+      if (_collapsedCategories.contains(category)) {
+        _collapsedCategories.remove(category);
+      } else {
+        _collapsedCategories.add(category);
+      }
+    });
   }
 
   @override
@@ -68,8 +80,13 @@ class _AppSidebarState extends ConsumerState<AppSidebar> {
     final sidebarColor = isDark ? theme.colorScheme.surface : theme.colorScheme.primary;
 
     final filteredItems = widget.items
-        .where((item) => item.label.toLowerCase().contains(_searchQuery.toLowerCase()))
+        .where((item) => item.label.toLowerCase().contains(_searchQuery.toLowerCase()) || item.category.toLowerCase().contains(_searchQuery.toLowerCase()))
         .toList();
+
+    final Map<String, List<SidebarItem>> groupedItems = {};
+    for (var item in filteredItems) {
+      groupedItems.putIfAbsent(item.category, () => []).add(item);
+    }
 
     return AnnotatedRegion<SystemUiOverlayStyle>(
       value: SystemUiOverlayStyle(
@@ -102,28 +119,52 @@ class _AppSidebarState extends ConsumerState<AppSidebar> {
             const Divider(height: 1, color: Colors.white10),
             Expanded(
               child: SingleChildScrollView(
+                padding: const EdgeInsets.symmetric(vertical: AppSpacing.s),
                 child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    ListView.separated(
-                      shrinkWrap: true,
-                      physics: const NeverScrollableScrollPhysics(),
-                      padding: const EdgeInsets.symmetric(vertical: AppSpacing.m),
-                      itemCount: filteredItems.length,
-                      separatorBuilder: (context, index) => const SizedBox(height: 4),
-                      itemBuilder: (context, index) {
-                        final item = filteredItems[index];
+                    if (_searchQuery.isNotEmpty) ...[
+                      // Search Mode: Flat List
+                      ...filteredItems.map((item) {
                         final isSelected = widget.currentRoute == item.route;
                         return _buildMenuItem(context, ref, item, isSelected);
-                      },
-                    ),
-                    if (filteredItems.isEmpty && _searchQuery.isNotEmpty)
-                      Padding(
-                        padding: const EdgeInsets.all(AppSpacing.l),
-                        child: Text(
-                          'No menu items found',
-                          style: TextStyle(color: Colors.white54, fontSize: 12, fontStyle: FontStyle.italic),
+                      }),
+                      if (filteredItems.isEmpty)
+                        const Padding(
+                          padding: EdgeInsets.all(AppSpacing.l),
+                          child: Center(
+                            child: Text(
+                              'No menu items found',
+                              style: TextStyle(color: Colors.white54, fontSize: 12, fontStyle: FontStyle.italic),
+                            ),
+                          ),
                         ),
-                      ),
+                    ] else ...[
+                      // Categorized Mode: Collapsible Section Headers
+                      ...groupedItems.entries.map((entry) {
+                        final category = entry.key;
+                        final items = entry.value;
+                        final isCollapsed = _collapsedCategories.contains(category);
+                        final hasActiveRoute = items.any((i) => i.route == widget.currentRoute);
+
+                        // Don't collapse section if current active route is inside it
+                        final effectiveCollapsed = isCollapsed && !hasActiveRoute;
+
+                        return Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            if (category.isNotEmpty && category != 'General')
+                              _buildSectionHeader(category, items.length, effectiveCollapsed, hasActiveRoute),
+                            if (!effectiveCollapsed)
+                              ...items.map((item) {
+                                final isSelected = widget.currentRoute == item.route;
+                                return _buildMenuItem(context, ref, item, isSelected);
+                              }),
+                            const SizedBox(height: 6),
+                          ],
+                        );
+                      }),
+                    ],
                   ],
                 ),
               ),
@@ -133,6 +174,48 @@ class _AppSidebarState extends ConsumerState<AppSidebar> {
             _buildBottomActions(context, ref, isDark),
             // Ensure content doesn't get hidden under system navigation bar
             SizedBox(height: MediaQuery.of(context).padding.bottom),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildSectionHeader(String title, int count, bool isCollapsed, bool hasActiveRoute) {
+    return InkWell(
+      onTap: () => _toggleCategory(title),
+      child: Padding(
+        padding: const EdgeInsets.fromLTRB(16, 12, 12, 6),
+        child: Row(
+          children: [
+            Expanded(
+              child: Text(
+                title.toUpperCase(),
+                style: TextStyle(
+                  color: hasActiveRoute ? Colors.amberAccent : Colors.white54,
+                  fontSize: 10,
+                  fontWeight: FontWeight.bold,
+                  letterSpacing: 1.1,
+                ),
+                overflow: TextOverflow.ellipsis,
+              ),
+            ),
+            Container(
+              padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 1),
+              decoration: BoxDecoration(
+                color: Colors.white.withValues(alpha: 0.1),
+                borderRadius: BorderRadius.circular(8),
+              ),
+              child: Text(
+                '$count',
+                style: const TextStyle(color: Colors.white70, fontSize: 9, fontWeight: FontWeight.bold),
+              ),
+            ),
+            const SizedBox(width: 4),
+            Icon(
+              isCollapsed ? Icons.keyboard_arrow_right_rounded : Icons.keyboard_arrow_down_rounded,
+              color: hasActiveRoute ? Colors.amberAccent : Colors.white38,
+              size: 16,
+            ),
           ],
         ),
       ),
@@ -521,10 +604,6 @@ class _AppSidebarState extends ConsumerState<AppSidebar> {
       ref.invalidate(expenseProvider);
       ref.invalidate(branchesProvider);
       ref.invalidate(transferProvider);
-      ref.invalidate(slaughterLogsProvider);
-      ref.invalidate(activeBatchesProvider);
-      ref.invalidate(recentCutsProvider);
-      ref.invalidate(butcherWasteProvider);
       
       debugPrint('System Refresh triggered');
     } catch (e) {

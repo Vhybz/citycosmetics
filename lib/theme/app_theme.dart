@@ -20,6 +20,7 @@ class AppTheme {
       colorScheme: ColorScheme.fromSeed(
         seedColor: primaryColor,
         primary: primaryColor,
+        onPrimary: Colors.white,
         surface: const Color(0xFFF5F5F5), // Slightly off-white surface
         onSurface: AppColors.textDark,
         surfaceContainerHighest: AppColors.surfaceWhite,

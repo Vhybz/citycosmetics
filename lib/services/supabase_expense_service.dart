@@ -29,12 +29,17 @@ class SupabaseExpenseService {
   }
 
   Stream<List<ExpenseRecord>> watchExpenses(String branchCode) {
-    return _client
-        .from('expenses')
-        .stream(primaryKey: ['id'])
-        .eq('branch_code', branchCode)
-        .order('date', ascending: false)
-        .map((data) => data.map((json) => ExpenseRecord.fromJson(json)).toList());
+    try {
+      return _client
+          .from('expenses')
+          .stream(primaryKey: ['id'])
+          .eq('branch_code', branchCode)
+          .order('date', ascending: false)
+          .map((data) => data.map((json) => ExpenseRecord.fromJson(json)).toList())
+          .handleError((e, st) => <ExpenseRecord>[]);
+    } catch (_) {
+      return Stream.value([]);
+    }
   }
 
   Future<String?> uploadReceipt(Uint8List bytes, String fileName) async {

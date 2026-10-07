@@ -1,4 +1,42 @@
-enum WeightUnit { kg, lb, g, unit }
+enum WeightUnit { pcs, pack, box, kg, lb, g, unit }
+
+extension WeightUnitExtension on WeightUnit {
+  String get label {
+    switch (this) {
+      case WeightUnit.pcs:
+      case WeightUnit.unit:
+        return 'pcs';
+      case WeightUnit.pack:
+        return 'pack';
+      case WeightUnit.box:
+        return 'box';
+      case WeightUnit.kg:
+        return 'kg';
+      case WeightUnit.lb:
+        return 'lb';
+      case WeightUnit.g:
+        return 'g';
+    }
+  }
+
+  String get displayName {
+    switch (this) {
+      case WeightUnit.pcs:
+      case WeightUnit.unit:
+        return 'PCS';
+      case WeightUnit.pack:
+        return 'PACKS';
+      case WeightUnit.box:
+        return 'BOXES';
+      case WeightUnit.kg:
+        return 'KG';
+      case WeightUnit.lb:
+        return 'LB';
+      case WeightUnit.g:
+        return 'G';
+    }
+  }
+}
 
 class WeightConverter {
   static double toKg(double lbs) => lbs * 0.453592;
@@ -14,48 +52,54 @@ class WeightConverter {
   }) {
     if (from == to) return value;
     
-    // Normalize to KG first
-    double kg;
+    // Normalize value
+    double base;
     switch (from) {
-      case WeightUnit.kg: kg = value; break;
-      case WeightUnit.lb: kg = toKg(value); break;
-      case WeightUnit.g: kg = fromG(value); break;
-      case WeightUnit.unit: kg = value; break; // Units stay as is
+      case WeightUnit.pcs:
+      case WeightUnit.pack:
+      case WeightUnit.unit:
+      case WeightUnit.box:
+      case WeightUnit.kg: base = value; break;
+      case WeightUnit.lb: base = toKg(value); break;
+      case WeightUnit.g: base = fromG(value); break;
     }
 
     // Convert to target
     switch (to) {
-      case WeightUnit.kg: return kg;
-      case WeightUnit.lb: return toLbs(kg);
-      case WeightUnit.g: return toG(kg);
-      case WeightUnit.unit: return kg;
+      case WeightUnit.pcs:
+      case WeightUnit.pack:
+      case WeightUnit.unit:
+      case WeightUnit.box:
+      case WeightUnit.kg: return base;
+      case WeightUnit.lb: return toLbs(base);
+      case WeightUnit.g: return toG(base);
     }
   }
 
   static String formatShort(double weight, {String? unit}) {
     final lowerUnit = unit?.toLowerCase();
-    if (lowerUnit == 'unit' || lowerUnit == 'qty' || lowerUnit == 'pcs') {
-      final isInt = weight == weight.roundToDouble();
-      return '${isInt ? weight.toStringAsFixed(0) : weight.toStringAsFixed(1)} pcs';
+    final isInt = weight == weight.roundToDouble();
+    final qtyStr = isInt ? weight.toStringAsFixed(0) : weight.toStringAsFixed(1);
+
+    if (lowerUnit == 'box' || lowerUnit == 'boxes' || lowerUnit == 'carton') {
+      return '$qtyStr ${weight == 1 ? 'box' : 'boxes'}';
     }
     if (lowerUnit == 'lb' || lowerUnit == 'lbs') {
       final lbs = toLbs(weight);
-      final isInt = lbs == lbs.roundToDouble();
-      return '${isInt ? lbs.toStringAsFixed(0) : lbs.toStringAsFixed(1)} lb';
+      final isLbsInt = lbs == lbs.roundToDouble();
+      return '${isLbsInt ? lbs.toStringAsFixed(0) : lbs.toStringAsFixed(1)} lb';
     }
     if (lowerUnit == 'g') {
       final grams = toG(weight);
       return '${grams.toStringAsFixed(0)}g';
     }
-    if (lowerUnit != null && lowerUnit != 'kg' && lowerUnit != 't') {
-      final isInt = weight == weight.roundToDouble();
-      return '${isInt ? weight.toStringAsFixed(0) : weight.toStringAsFixed(1)} $unit';
+    if (lowerUnit == 'kg') {
+      return '$qtyStr kg';
     }
-    if (weight >= 1000) {
-      return '${(weight / 1000).toStringAsFixed(1)}t';
+    if (lowerUnit != null && lowerUnit.isNotEmpty && lowerUnit != 'unit' && lowerUnit != 'qty' && lowerUnit != 'pcs') {
+      return '$qtyStr $unit';
     }
-    final isInt = weight == weight.roundToDouble();
-    return '${isInt ? weight.toStringAsFixed(0) : weight.toStringAsFixed(1)}kg';
+    return '$qtyStr pcs';
   }
 }
 

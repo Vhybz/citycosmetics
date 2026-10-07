@@ -1,5 +1,4 @@
 import 'customer_model.dart';
-import 'system_models.dart';
 
 enum PromoTarget { retail, wholesale, both }
 enum PromoCustomerTarget { all, regularsOnly, specialOnly, specificPerson }
@@ -42,7 +41,13 @@ class Product {
   final List<PriceBracket>? wholesaleBrackets;
   final String imageUrl;
   final String category;
-  final double stockQuantity;
+  final double stockQuantity; // Store Stock
+  final double warehouseQuantity; // Warehouse Stock
+  final double minStoreStock; // Minimum Store Stock Threshold
+  final String? sku;
+  final String? brand;
+  final String? size;
+  final String? warehouseLocation;
   final String unit;
   final double discountPercentage;
   final DateTime? promoStartDate;
@@ -50,6 +55,11 @@ class Product {
   final PromoTarget promoTarget;
   final PromoCustomerTarget promoCustomerTarget;
   final String? targetCustomerId;
+  final bool hasPacks; // Packaging option: Packs enabled
+  final bool hasBoxes; // Packaging option: Boxes enabled
+  final double pcsPerPack; // Pieces per pack (default 12.0)
+  final double packsPerBox; // Packs per box (default 10.0)
+  final double pcsPerBox; // Total pieces per box (pcsPerPack * packsPerBox)
   final bool isDeleted; // Soft delete
   final bool isUnlimited; // Stock doesn't decrease on sales
   final double lowStockThreshold;
@@ -68,7 +78,18 @@ class Product {
     required this.imageUrl,
     required this.category,
     this.stockQuantity = 0,
-    this.unit = 'kg',
+    this.warehouseQuantity = 0,
+    this.minStoreStock = 5.0,
+    this.sku,
+    this.brand,
+    this.size = 'Standard',
+    this.warehouseLocation,
+    this.unit = 'pcs',
+    this.hasPacks = true,
+    this.hasBoxes = true,
+    this.pcsPerPack = 12.0,
+    this.packsPerBox = 10.0,
+    this.pcsPerBox = 120.0,
     this.discountPercentage = 0.0,
     this.promoStartDate,
     this.promoEndDate,
@@ -81,6 +102,68 @@ class Product {
     this.dailyStockAdded = 0.0,
     this.lastStockUpdate,
   });
+
+  bool get needsDispatch => !isUnlimited && stockQuantity <= minStoreStock;
+  double get storeStock => stockQuantity;
+
+  /// Total pieces per box
+  double get totalPcsPerBox => pcsPerPack > 0 && packsPerBox > 0 ? (pcsPerPack * packsPerBox) : (pcsPerBox > 0 ? pcsPerBox : 120.0);
+
+  /// Packs & Boxes in store
+  double get storePacks => pcsPerPack > 0 ? stockQuantity / pcsPerPack : stockQuantity;
+  double get storeBoxes => totalPcsPerBox > 0 ? stockQuantity / totalPcsPerBox : stockQuantity;
+
+  /// Packs & Boxes in warehouse
+  double get warehousePacks => pcsPerPack > 0 ? warehouseQuantity / pcsPerPack : warehouseQuantity;
+  double get warehouseBoxes => totalPcsPerBox > 0 ? warehouseQuantity / totalPcsPerBox : warehouseQuantity;
+
+  /// Display for POS: ONLY pieces (e.g. "120 Pcs")
+  String get posStockDisplay => isUnlimited ? 'UNLIMITED' : '${stockQuantity.toInt()} Pcs';
+
+  /// Display for Stock Control (Store): Pcs, Packs & Boxes
+  String get stockControlStoreDisplay {
+    if (isUnlimited) return 'UNLIMITED';
+    final int pcs = stockQuantity.toInt();
+    
+    if (hasPacks && hasBoxes) {
+      final double pk = storePacks;
+      final double bx = storeBoxes;
+      final pkStr = pk % 1 == 0 ? pk.toInt().toString() : pk.toStringAsFixed(1);
+      final bxStr = bx % 1 == 0 ? bx.toInt().toString() : bx.toStringAsFixed(1);
+      return '$pcs Pcs ($pkStr Packs | $bxStr Boxes)';
+    } else if (hasBoxes) {
+      final double bx = storeBoxes;
+      final bxStr = bx % 1 == 0 ? bx.toInt().toString() : bx.toStringAsFixed(1);
+      return '$pcs Pcs ($bxStr Boxes)';
+    } else if (hasPacks) {
+      final double pk = storePacks;
+      final pkStr = pk % 1 == 0 ? pk.toInt().toString() : pk.toStringAsFixed(1);
+      return '$pcs Pcs ($pkStr Packs)';
+    }
+    return '$pcs Pcs';
+  }
+
+  /// Display for Stock Control (Warehouse): Pcs, Packs & Boxes
+  String get stockControlWarehouseDisplay {
+    final int pcs = warehouseQuantity.toInt();
+    
+    if (hasPacks && hasBoxes) {
+      final double pk = warehousePacks;
+      final double bx = warehouseBoxes;
+      final pkStr = pk % 1 == 0 ? pk.toInt().toString() : pk.toStringAsFixed(1);
+      final bxStr = bx % 1 == 0 ? bx.toInt().toString() : bx.toStringAsFixed(1);
+      return '$pcs Pcs ($pkStr Packs | $bxStr Boxes)';
+    } else if (hasBoxes) {
+      final double bx = warehouseBoxes;
+      final bxStr = bx % 1 == 0 ? bx.toInt().toString() : bx.toStringAsFixed(1);
+      return '$pcs Pcs ($bxStr Boxes)';
+    } else if (hasPacks) {
+      final double pk = warehousePacks;
+      final pkStr = pk % 1 == 0 ? pk.toInt().toString() : pk.toStringAsFixed(1);
+      return '$pcs Pcs ($pkStr Packs)';
+    }
+    return '$pcs Pcs';
+  }
 
   /// Logic to check if promotion is currently scheduled correctly by date
   bool get isPromoScheduled {
@@ -150,14 +233,25 @@ class Product {
     double? wholesalePrice,
     double? costPrice,
     double? stockQuantity,
+    double? warehouseQuantity,
+    double? minStoreStock,
+    String? sku,
+    String? brand,
+    String? size,
+    String? warehouseLocation,
+    String? category,
+    String? unit,
+    bool? hasPacks,
+    bool? hasBoxes,
+    double? pcsPerPack,
+    double? packsPerBox,
+    double? pcsPerBox,
     double? discountPercentage,
     DateTime? promoStartDate,
     DateTime? promoEndDate,
     PromoTarget? promoTarget,
     PromoCustomerTarget? promoCustomerTarget,
     String? targetCustomerId,
-    String? category,
-    String? unit,
     String? imageUrl,
     bool? isDeleted,
     bool? isUnlimited,
@@ -177,7 +271,18 @@ class Product {
       imageUrl: imageUrl ?? this.imageUrl,
       category: category ?? this.category,
       stockQuantity: stockQuantity ?? this.stockQuantity,
+      warehouseQuantity: warehouseQuantity ?? this.warehouseQuantity,
+      minStoreStock: minStoreStock ?? this.minStoreStock,
+      sku: sku ?? this.sku,
+      brand: brand ?? this.brand,
+      size: size ?? this.size,
+      warehouseLocation: warehouseLocation ?? this.warehouseLocation,
       unit: unit ?? this.unit,
+      hasPacks: hasPacks ?? this.hasPacks,
+      hasBoxes: hasBoxes ?? this.hasBoxes,
+      pcsPerPack: pcsPerPack ?? this.pcsPerPack,
+      packsPerBox: packsPerBox ?? this.packsPerBox,
+      pcsPerBox: pcsPerBox ?? this.pcsPerBox,
       discountPercentage: discountPercentage ?? this.discountPercentage,
       promoStartDate: promoStartDate ?? this.promoStartDate,
       promoEndDate: promoEndDate ?? this.promoEndDate,
@@ -218,8 +323,19 @@ class Product {
           .toList(),
       imageUrl: map['image_url'] as String? ?? '',
       category: map['category'] as String,
-      stockQuantity: (map['stock_quantity'] as num? ?? 0).toDouble(),
-      unit: map['unit'] as String? ?? 'kg',
+      stockQuantity: (map['stock_quantity'] as num? ?? 0.0).toDouble(),
+      warehouseQuantity: (map['warehouse_quantity'] as num? ?? (map['initial_weight'] as num? ?? 0.0)).toDouble(),
+      minStoreStock: (map['min_store_stock'] as num? ?? (map['low_stock_threshold'] as num? ?? 5.0)).toDouble(),
+      sku: map['sku']?.toString(),
+      brand: map['brand']?.toString(),
+      size: (map['size'] != null && map['size'].toString().trim().isNotEmpty) ? map['size'].toString() : 'Standard',
+      warehouseLocation: map['warehouse_location']?.toString(),
+      unit: map['unit'] as String? ?? 'Pcs',
+      hasPacks: map['has_packs'] ?? true,
+      hasBoxes: map['has_boxes'] ?? true,
+      pcsPerPack: (map['pcs_per_pack'] as num? ?? 12.0).toDouble(),
+      packsPerBox: (map['packs_per_box'] as num? ?? 10.0).toDouble(),
+      pcsPerBox: (map['pcs_per_box'] as num? ?? (map['pieces_per_box'] as num? ?? 120.0)).toDouble(),
       discountPercentage: (map['discount_percentage'] as num? ?? 0.0).toDouble(),
       promoStartDate: map['promo_start'] != null ? DateTime.parse(map['promo_start']) : null,
       promoEndDate: map['promo_end'] != null ? DateTime.parse(map['promo_end']) : null,
@@ -246,7 +362,18 @@ class Product {
         'image_url': imageUrl,
         'category': category,
         'stock_quantity': stockQuantity,
+        'warehouse_quantity': warehouseQuantity,
+        'min_store_stock': minStoreStock,
+        'sku': sku,
+        'brand': brand,
+        'size': size,
+        'warehouse_location': warehouseLocation,
         'unit': unit,
+        'has_packs': hasPacks,
+        'has_boxes': hasBoxes,
+        'pcs_per_pack': pcsPerPack,
+        'packs_per_box': packsPerBox,
+        'pcs_per_box': pcsPerBox,
         'discount_percentage': discountPercentage,
         'promo_start': promoStartDate?.toIso8601String(),
         'promo_end': promoEndDate?.toIso8601String(),
@@ -278,26 +405,4 @@ class CartItem {
 
   double get total => priceAtSale * quantity;
   double get discount => (originalPrice - priceAtSale) * quantity;
-}
-
-class ProductActivityReportData {
-  final Product product;
-  final double totalIntakeQty;
-  final List<StockHistory> intakeEntries;
-  final DateTime? lastIntakeDate;
-  final double totalQtySold;
-  final double totalRevenue;
-  final List<Map<String, dynamic>> salesBreakdown;
-  final double remainingStock;
-
-  ProductActivityReportData({
-    required this.product,
-    required this.totalIntakeQty,
-    required this.intakeEntries,
-    this.lastIntakeDate,
-    required this.totalQtySold,
-    required this.totalRevenue,
-    required this.salesBreakdown,
-    required this.remainingStock,
-  });
 }

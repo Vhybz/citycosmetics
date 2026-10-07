@@ -9,10 +9,10 @@ import '../../services/menu_service.dart';
 import '../../services/user_provider.dart';
 import '../../services/sale_provider.dart';
 import '../../services/expense_provider.dart';
-import '../../services/butcher_service.dart';
+import '../../services/warehouse_service.dart';
 import '../../models/sale_model.dart';
-import '../../models/butcher_models.dart';
 import '../../models/expense_model.dart';
+import '../../models/warehouse_models.dart';
 
 class RecentsScreen extends ConsumerStatefulWidget {
   const RecentsScreen({super.key});
@@ -38,7 +38,7 @@ class _RecentsScreenState extends ConsumerState<RecentsScreen> {
 
     final sales = ref.watch(saleHistoryProvider);
     final expenses = ref.watch(expenseProvider).records;
-    final logs = ref.watch(slaughterLogsProvider).value ?? [];
+    final logs = ref.watch(shipmentLogProvider).value ?? [];
 
     final allActivity = _combineAndFilterActivity(sales, expenses, logs);
 
@@ -52,7 +52,7 @@ class _RecentsScreenState extends ConsumerState<RecentsScreen> {
           userRole: user.activePrimaryRole.name.toUpperCase(),
           currentRoute: currentRoute,
           items: menuItems,
-          onTap: (route) => MenuService.navigate(context, route, currentRoute),
+          onTap: (route) => MenuService.navigate(context, ref, route, currentRoute),
         ),
       ),
       body: Row(
@@ -64,7 +64,7 @@ class _RecentsScreenState extends ConsumerState<RecentsScreen> {
               userRole: user.activePrimaryRole.name.toUpperCase(),
               currentRoute: currentRoute,
               items: menuItems,
-              onTap: (route) => MenuService.navigate(context, route, currentRoute),
+              onTap: (route) => MenuService.navigate(context, ref, route, currentRoute),
             ),
           Expanded(
             child: Column(
@@ -126,7 +126,7 @@ class _RecentsScreenState extends ConsumerState<RecentsScreen> {
           SingleChildScrollView(
             scrollDirection: Axis.horizontal,
             child: Row(
-              children: ['All', 'Sales', 'Expenses', 'Butcher Logs'].map((filter) {
+              children: ['All', 'Sales', 'Expenses', 'Shipments'].map((filter) {
                 final isSelected = _activeFilter == filter;
                 return Padding(
                   padding: const EdgeInsets.only(right: 8),
@@ -191,23 +191,23 @@ class _RecentsScreenState extends ConsumerState<RecentsScreen> {
           ),
         ),
       );
-    } else if (item is SlaughterLog) {
+    } else if (item is ShipmentLog) {
       return Card(
         margin: const EdgeInsets.only(bottom: 12),
         child: ListTile(
           contentPadding: const EdgeInsets.symmetric(horizontal: AppSpacing.m, vertical: 4),
           leading: CircleAvatar(
             backgroundColor: Colors.orange.withValues(alpha: 0.1),
-            child: const Icon(Icons.pets, color: Colors.orange, size: 20),
+            child: const Icon(Icons.move_to_inbox_rounded, color: Colors.orange, size: 20),
           ),
           title: Row(
             children: [
-              Expanded(child: Text('Butcher Log: ${item.type.displayName}', style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 13), overflow: TextOverflow.ellipsis)),
-              Text('${item.liveWeight}kg', style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 13)),
+              Expanded(child: Text('Shipment: ${item.supplierName}', style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 13), overflow: TextOverflow.ellipsis)),
+              Text('${item.totalItemsReceived.toInt()} Pcs', style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 13)),
             ],
           ),
           subtitle: Text(
-            'Status: ${item.status.name.toUpperCase()} • ${DateFormat('MMM dd, HH:mm').format(item.slaughterTime ?? DateTime.now())}',
+            'Tag: ${item.tagNumber} • ${DateFormat('MMM dd, HH:mm').format(item.arrivalDate)}',
             style: const TextStyle(fontSize: 11),
             overflow: TextOverflow.ellipsis,
           ),
@@ -217,12 +217,12 @@ class _RecentsScreenState extends ConsumerState<RecentsScreen> {
     return const SizedBox.shrink();
   }
 
-  List<dynamic> _combineAndFilterActivity(List<SaleRecord> sales, List<ExpenseRecord> expenses, List<SlaughterLog> logs) {
+  List<dynamic> _combineAndFilterActivity(List<SaleRecord> sales, List<ExpenseRecord> expenses, List<ShipmentLog> logs) {
     List<dynamic> combined = [];
     
     if (_activeFilter == 'All' || _activeFilter == 'Sales') combined.addAll(sales);
     if (_activeFilter == 'All' || _activeFilter == 'Expenses') combined.addAll(expenses);
-    if (_activeFilter == 'All' || _activeFilter == 'Butcher Logs') combined.addAll(logs);
+    if (_activeFilter == 'All' || _activeFilter == 'Shipments') combined.addAll(logs);
 
     // Filter by Search Query
     if (_searchQuery.isNotEmpty) {
@@ -234,8 +234,8 @@ class _RecentsScreenState extends ConsumerState<RecentsScreen> {
         if (item is ExpenseRecord) {
           return item.title.toLowerCase().contains(q) || item.category.toLowerCase().contains(q);
         }
-        if (item is SlaughterLog) {
-          return item.animalId.toLowerCase().contains(q) || item.type.displayName.toLowerCase().contains(q);
+        if (item is ShipmentLog) {
+          return item.supplierName.toLowerCase().contains(q) || item.tagNumber.toLowerCase().contains(q);
         }
         return false;
       }).toList();
@@ -249,8 +249,8 @@ class _RecentsScreenState extends ConsumerState<RecentsScreen> {
           date = item.timestamp;
         } else if (item is ExpenseRecord) {
           date = item.date;
-        } else if (item is SlaughterLog) {
-          date = item.slaughterTime ?? DateTime.now();
+        } else if (item is ShipmentLog) {
+          date = item.arrivalDate;
         } else {
           return false;
         }
@@ -266,8 +266,10 @@ class _RecentsScreenState extends ConsumerState<RecentsScreen> {
         dateA = a.timestamp;
       } else if (a is ExpenseRecord) {
         dateA = a.date;
+      } else if (a is ShipmentLog) {
+        dateA = a.arrivalDate;
       } else {
-        dateA = (a as SlaughterLog).slaughterTime ?? DateTime.now();
+        dateA = DateTime.now();
       }
 
       DateTime dateB;
@@ -275,8 +277,10 @@ class _RecentsScreenState extends ConsumerState<RecentsScreen> {
         dateB = b.timestamp;
       } else if (b is ExpenseRecord) {
         dateB = b.date;
+      } else if (b is ShipmentLog) {
+        dateB = b.arrivalDate;
       } else {
-        dateB = (b as SlaughterLog).slaughterTime ?? DateTime.now();
+        dateB = DateTime.now();
       }
 
       return dateB.compareTo(dateA);

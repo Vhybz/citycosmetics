@@ -165,8 +165,8 @@ class _MainAppBarState extends ConsumerState<MainAppBar> with SingleTickerProvid
                     HapticFeedback.lightImpact();
                     StaffSwitchSheet.show(context);
                   },
-                  size: isMobile ? 32 : 42,
-                  iconSize: isMobile ? 16 : 20,
+                  size: isMobile ? 30 : 42,
+                  iconSize: isMobile ? 15 : 20,
                   tooltip: 'Switch User / Staff Handover',
                 ),
                 if (user?.isPasscodeEnabled == true && user?.passcode != null && user!.passcode!.isNotEmpty) ...[
@@ -178,20 +178,22 @@ class _MainAppBarState extends ConsumerState<MainAppBar> with SingleTickerProvid
                       HapticFeedback.mediumImpact();
                       ref.read(passcodeUnlockedProvider.notifier).state = false;
                     },
-                    size: isMobile ? 32 : 42,
-                    iconSize: isMobile ? 16 : 20,
+                    size: isMobile ? 30 : 42,
+                    iconSize: isMobile ? 15 : 20,
                     tooltip: 'Lock System',
                   ),
                 ],
-                SizedBox(width: isMobile ? 2 : 4),
-                _buildRoundButton(
-                  context, 
-                  Icons.calculate_outlined, 
-                  () => showDialog(context: context, builder: (context) => const CalculatorDialog()),
-                  size: isMobile ? 32 : 42,
-                  iconSize: isMobile ? 16 : 20,
-                  tooltip: 'Quick Calculator',
-                ),
+                if (!isMobile) ...[
+                  const SizedBox(width: 4),
+                  _buildRoundButton(
+                    context, 
+                    Icons.calculate_outlined, 
+                    () => showDialog(context: context, builder: (context) => const CalculatorDialog()),
+                    size: 42,
+                    iconSize: 20,
+                    tooltip: 'Quick Calculator',
+                  ),
+                ],
                 if (widget.actions != null) ...[
                   SizedBox(width: isMobile ? 2 : 4),
                   ...widget.actions!,
@@ -256,36 +258,40 @@ class _MainAppBarState extends ConsumerState<MainAppBar> with SingleTickerProvid
   }
 
   Widget _buildToolsRow(BuildContext context, bool isMobile, bool isDark) {
-    return Row(
-      key: const ValueKey('tools'),
-      mainAxisAlignment: MainAxisAlignment.end,
-      children: [
-        _buildToolIcon(Icons.refresh_rounded, () {
-          ref.read(transferProvider.notifier).loadTransfers();
-          ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Syncing Data...'), duration: Duration(milliseconds: 500)));
-        }),
-        const SizedBox(width: 12),
-        _buildToolIcon(Icons.calculate_outlined, () => showDialog(context: context, builder: (context) => const CalculatorDialog())),
-        const SizedBox(width: 12),
-        _buildToolIcon(Icons.auto_awesome_outlined, () => _showAiChatbot(context)),
-        if (!isMobile) ...[
-          const SizedBox(width: 12),
-          _buildToolIcon(
-            isDark ? Icons.light_mode_outlined : Icons.dark_mode_outlined, 
-            () => ref.read(themeProvider.notifier).toggleTheme(!isDark)
-          ),
+    return SingleChildScrollView(
+      scrollDirection: Axis.horizontal,
+      child: Row(
+        key: const ValueKey('tools'),
+        mainAxisAlignment: MainAxisAlignment.end,
+        children: [
+          _buildToolIcon(Icons.refresh_rounded, () {
+            ref.read(transferProvider.notifier).loadTransfers();
+            ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Syncing Data...'), duration: Duration(milliseconds: 500)));
+          }, isMobile: isMobile),
+          SizedBox(width: isMobile ? 6 : 12),
+          _buildToolIcon(Icons.calculate_outlined, () => showDialog(context: context, builder: (context) => const CalculatorDialog()), isMobile: isMobile),
+          SizedBox(width: isMobile ? 6 : 12),
+          _buildToolIcon(Icons.auto_awesome_outlined, () => _showAiChatbot(context), isMobile: isMobile),
+          if (!isMobile) ...[
+            const SizedBox(width: 12),
+            _buildToolIcon(
+              isDark ? Icons.light_mode_outlined : Icons.dark_mode_outlined, 
+              () => ref.read(themeProvider.notifier).toggleTheme(!isDark),
+              isMobile: isMobile,
+            ),
+          ],
         ],
-      ],
+      ),
     );
   }
 
-  Widget _buildToolIcon(IconData icon, VoidCallback onTap) {
+  Widget _buildToolIcon(IconData icon, VoidCallback onTap, {bool isMobile = false}) {
     return InkWell(
       onTap: onTap,
       borderRadius: BorderRadius.circular(20),
       child: Padding(
-        padding: const EdgeInsets.all(8.0),
-        child: Icon(icon, color: Colors.white, size: 22),
+        padding: EdgeInsets.all(isMobile ? 4.0 : 8.0),
+        child: Icon(icon, color: Colors.white, size: isMobile ? 18 : 22),
       ),
     );
   }
@@ -693,7 +699,7 @@ class _MainAppBarState extends ConsumerState<MainAppBar> with SingleTickerProvid
                             shape: BoxShape.circle,
                           ),
                           child: Icon(
-                            n.title.contains('BUTCHER') ? Icons.warning_rounded : Icons.info_outline_rounded, 
+                            n.title.contains('STOCK') ? Icons.warning_rounded : Icons.info_outline_rounded, 
                             color: Colors.orange,
                             size: 20,
                           ),
@@ -715,11 +721,7 @@ class _MainAppBarState extends ConsumerState<MainAppBar> with SingleTickerProvid
                         tileColor: Colors.orange.withValues(alpha: 0.02),
                         onTap: () {
                           ref.read(notificationProvider.notifier).markAsRead(n.id);
-                          final title = n.title.toUpperCase();
-                          if (title.contains('TRANSFER') || title.contains('DISPATCHED') || title.contains('STOCK')) {
-                            Navigator.pop(context); // Close notifications dialog
-                            Navigator.pushNamed(context, '/cashier/verify-stock');
-                          }
+                          Navigator.pop(context); // Close notifications dialog
                         },
                       );
                     },

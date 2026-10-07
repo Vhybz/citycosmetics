@@ -25,7 +25,7 @@ class SmsService {
 
   static String get _adminPhone {
     if (_defineAdminPhone.isNotEmpty) return _defineAdminPhone;
-    return dotenv.env['ADMIN_PHONE'] ?? '0209276200';
+    return dotenv.env['ADMIN_PHONE'] ?? '0542562486';
   }
 
   static Future<bool> _sendSms(String to, String message) async {
@@ -172,7 +172,11 @@ class SmsService {
   }
 
   static Future<void> sendApprovalRequestSms(UserAccount applicant, List<UserAccount> admins) async {
-    final message = 'New user registration needs approval. Name: ${applicant.firstName} ${applicant.surname}, Role: ${applicant.role.name.toUpperCase()}. Please log in to approve.';
+    final String isApprovedStr = applicant.status == AccountStatus.approved ? 'APPROVED' : 'PENDING APPROVAL';
+    final String branchStr = (applicant.branchCode != null && applicant.branchCode!.isNotEmpty) ? applicant.branchCode! : 'HQ';
+    final String phoneStr = (applicant.phone != null && applicant.phone!.isNotEmpty) ? applicant.phone! : 'N/A';
+
+    final message = 'NEW SIGNUP ALERT: ${applicant.firstName} ${applicant.surname} registered as ${applicant.role.name.toUpperCase()} for branch $branchStr. Phone: $phoneStr. Status: $isApprovedStr.${applicant.status == AccountStatus.pending ? " Please log in to review and approve." : ""}';
     
     final adminPhones = admins
         .where((u) => (u.role == UserRole.admin || u.role == UserRole.superAdmin) && u.phone != null && u.phone!.isNotEmpty)
@@ -190,11 +194,11 @@ class SmsService {
   }
 
   static Future<void> sendSignupConfirmationSms(UserAccount user, bool isAutoApproved) async {
-    if (user.phone == null || user.phone!.isEmpty) return;
+    if (user.phone == null || user.phone!.trim().isEmpty) return;
 
     final statusMessage = isAutoApproved 
-        ? 'Your account has been approved. You can now log in.' 
-        : 'Your application is pending administrator approval. You will be notified once approved.';
+        ? 'Your account has been activated. You can now log in.' 
+        : 'Your account is pending administrator approval. You will receive an SMS as soon as approved.';
 
     String message = 'Hello ${user.firstName}, thank you for registering with City Cosmetics POS. $statusMessage';
     

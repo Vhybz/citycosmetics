@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:video_player/video_player.dart';
 import '../core/constants.dart';
 
 class OnboardingScreen extends StatefulWidget {
@@ -19,6 +20,8 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
       description: 'Streamline cosmetic sales, track stock, and manage your beauty store effortlessly.',
       icon: Icons.storefront_rounded,
       color: const Color(0xFF3B82F6), // Electric Blue
+      imagePath: 'assets/images/bgi/cc.jpg',
+      videoPath: 'assets/lottie/device-sync-animation-gif-download-4831393.mp4',
     ),
     OnboardingData(
       title: 'Barcoded Precision',
@@ -26,6 +29,8 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
       description: 'Scan product barcodes for instant register checkout and 100% inventory precision.',
       icon: Icons.qr_code_scanner_rounded,
       color: const Color(0xFF10B981), // Emerald Green
+      imagePath: 'assets/images/bgi/ca.jpg',
+      videoPath: 'assets/lottie/barcode.mp4',
     ),
     OnboardingData(
       title: 'Growth Analytics',
@@ -33,6 +38,8 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
       description: 'Real-time profit tracking and business insights. Manage multiple branches from your smartphone.',
       icon: Icons.insights_rounded,
       color: const Color(0xFF8B5CF6), // Royal Purple
+      imagePath: 'assets/images/serums/ccc.jpg',
+      videoPath: 'assets/lottie/analytics.mp4',
     ),
     OnboardingData(
       title: 'Offline Syncing',
@@ -40,6 +47,8 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
       description: 'No internet? No problem. Complete sales offline and sync automatically when network returns.',
       icon: Icons.cloud_done_rounded,
       color: const Color(0xFF06B6D4), // Cyan
+      imagePath: 'assets/images/serums/cx.jpg',
+      videoPath: 'assets/lottie/offlineOnline.mp4',
     ),
   ];
 
@@ -53,152 +62,176 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
     return Scaffold(
       backgroundColor: darkNavy,
       resizeToAvoidBottomInset: false,
-      body: Container(
-        decoration: const BoxDecoration(
-          gradient: LinearGradient(
-            begin: Alignment.topCenter,
-            end: Alignment.bottomCenter,
-            colors: [blueBlack, darkNavy],
+      body: Stack(
+        children: [
+          // Background Image with AnimatedSwitcher
+          Positioned.fill(
+            child: AnimatedSwitcher(
+              duration: const Duration(milliseconds: 700),
+              child: Image.asset(
+                _pages[_currentPage].imagePath,
+                key: ValueKey<String>(_pages[_currentPage].imagePath),
+                fit: BoxFit.cover,
+                width: double.infinity,
+                height: double.infinity,
+                errorBuilder: (context, error, stackTrace) {
+                  return Container(color: darkNavy);
+                },
+              ),
+            ),
           ),
-        ),
-        child: Stack(
-          children: [
-            // Soft geometric glowing circles (No background images)
-            Positioned(
-              top: -60,
-              right: -60,
-              child: Container(
-                width: 260,
-                height: 260,
-                decoration: BoxDecoration(
-                  shape: BoxShape.circle,
-                  color: _pages[_currentPage].color.withValues(alpha: 0.08),
+
+          // Dark Overlay Gradient for text legibility
+          Positioned.fill(
+            child: Container(
+              decoration: BoxDecoration(
+                gradient: LinearGradient(
+                  begin: Alignment.topCenter,
+                  end: Alignment.bottomCenter,
+                  colors: [
+                    blueBlack.withValues(alpha: 0.85),
+                    darkNavy.withValues(alpha: 0.92),
+                  ],
                 ),
               ),
             ),
-            Positioned(
-              bottom: -80,
-              left: -80,
-              child: Container(
-                width: 300,
-                height: 300,
-                decoration: BoxDecoration(
-                  shape: BoxShape.circle,
-                  color: _pages[_currentPage].color.withValues(alpha: 0.06),
-                ),
+          ),
+
+          // Soft geometric glowing circles
+          Positioned(
+            top: -60,
+            right: -60,
+            child: Container(
+              width: 260,
+              height: 260,
+              decoration: BoxDecoration(
+                shape: BoxShape.circle,
+                color: _pages[_currentPage].color.withValues(alpha: 0.15),
               ),
             ),
-
-            // 1. Content PageView
-            PageView.builder(
-              controller: _pageController,
-              onPageChanged: (int page) => setState(() => _currentPage = page),
-              itemCount: _pages.length,
-              itemBuilder: (context, index) => _buildPage(_pages[index], index == _currentPage, isSmall),
+          ),
+          Positioned(
+            bottom: -80,
+            left: -80,
+            child: Container(
+              width: 300,
+              height: 300,
+              decoration: BoxDecoration(
+                shape: BoxShape.circle,
+                color: _pages[_currentPage].color.withValues(alpha: 0.12),
+              ),
             ),
+          ),
 
-            // 2. Top Branding & Skip
-            Positioned(
-              top: MediaQuery.of(context).padding.top + 20,
-              left: 20,
-              right: 20,
-              child: Row(
-                mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                children: [
-                  const Row(
-                    children: [
-                      Icon(Icons.storefront_rounded, color: Colors.blueAccent, size: 24),
-                      SizedBox(width: 8),
-                      Text(
-                        'CITY COSMETICS',
-                        style: TextStyle(
-                          color: Colors.white,
-                          fontWeight: FontWeight.w900,
-                          letterSpacing: 1.5,
-                          fontSize: 16,
-                        ),
-                      ),
-                    ],
-                  ),
-                  TextButton(
-                    onPressed: () => Navigator.pushReplacementNamed(context, '/login'),
-                    child: Text(
-                      'SKIP',
+          // 1. Content PageView
+          PageView.builder(
+            controller: _pageController,
+            onPageChanged: (int page) => setState(() => _currentPage = page),
+            itemCount: _pages.length,
+            itemBuilder: (context, index) => _buildPage(_pages[index], index == _currentPage, isSmall),
+          ),
+
+          // 2. Top Branding & Skip
+          Positioned(
+            top: MediaQuery.of(context).padding.top + 20,
+            left: 20,
+            right: 20,
+            child: Row(
+              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+              children: [
+                const Row(
+                  children: [
+                    Icon(Icons.storefront_rounded, color: Colors.blueAccent, size: 24),
+                    SizedBox(width: 8),
+                    Text(
+                      'CITY COSMETICS',
                       style: TextStyle(
-                        color: Colors.white.withValues(alpha: 0.6),
-                        fontWeight: FontWeight.bold,
-                        fontSize: 12,
-                        letterSpacing: 1,
+                        color: Colors.white,
+                        fontWeight: FontWeight.w900,
+                        letterSpacing: 1.5,
+                        fontSize: 16,
                       ),
                     ),
+                  ],
+                ),
+                TextButton(
+                  onPressed: () => Navigator.pushReplacementNamed(context, '/login'),
+                  child: Text(
+                    'SKIP',
+                    style: TextStyle(
+                      color: Colors.white.withValues(alpha: 0.6),
+                      fontWeight: FontWeight.bold,
+                      fontSize: 12,
+                      letterSpacing: 1,
+                    ),
                   ),
-                ],
-              ),
+                ),
+              ],
             ),
+          ),
 
-            // 3. Bottom Controls
-            Positioned(
-              bottom: MediaQuery.of(context).padding.bottom + 40,
-              left: 30,
-              right: 30,
-              child: Column(
-                children: [
-                  // Progress Indicators
-                  Row(
-                    mainAxisAlignment: MainAxisAlignment.center,
-                    children: List.generate(_pages.length, (index) => _buildDot(index)),
-                  ),
-                  SizedBox(height: isSmall ? 30 : 40),
-                  
-                  // Action Button
-                  Center(
-                    child: SizedBox(
-                      width: size.width > 460 ? 400 : double.infinity,
-                      height: 58,
-                      child: ElevatedButton(
-                        onPressed: () {
-                          if (_currentPage == _pages.length - 1) {
-                            Navigator.pushReplacementNamed(context, '/login');
-                          } else {
-                            _pageController.nextPage(
-                              duration: const Duration(milliseconds: 500), 
-                              curve: Curves.easeInOut
-                            );
-                          }
-                        },
-                        style: ElevatedButton.styleFrom(
-                          backgroundColor: _pages[_currentPage].color,
-                          foregroundColor: Colors.white,
-                          elevation: 8,
-                          shadowColor: _pages[_currentPage].color.withValues(alpha: 0.4),
-                          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-                        ),
-                        child: AnimatedSwitcher(
-                          duration: const Duration(milliseconds: 300),
-                          child: Row(
-                            key: ValueKey(_currentPage),
-                            mainAxisAlignment: MainAxisAlignment.center,
-                            children: [
-                              Text(
-                                _currentPage == _pages.length - 1 ? 'GET STARTED' : 'CONTINUE',
-                                style: const TextStyle(fontWeight: FontWeight.w900, letterSpacing: 1.2, fontSize: 15),
-                              ),
-                              const SizedBox(width: 10),
-                              Icon(
-                                _currentPage == _pages.length - 1 ? Icons.check_circle_outline : Icons.arrow_forward_ios_rounded,
-                                size: 16,
-                              ),
-                            ],
-                          ),
+          // 3. Bottom Controls
+          Positioned(
+            bottom: MediaQuery.of(context).padding.bottom + 40,
+            left: 30,
+            right: 30,
+            child: Column(
+              children: [
+                // Progress Indicators
+                Row(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: List.generate(_pages.length, (index) => _buildDot(index)),
+                ),
+                SizedBox(height: isSmall ? 30 : 40),
+                
+                // Action Button
+                Center(
+                  child: SizedBox(
+                    width: size.width > 460 ? 400 : double.infinity,
+                    height: 58,
+                    child: ElevatedButton(
+                      onPressed: () {
+                        if (_currentPage == _pages.length - 1) {
+                          Navigator.pushReplacementNamed(context, '/login');
+                        } else {
+                          _pageController.nextPage(
+                            duration: const Duration(milliseconds: 500), 
+                            curve: Curves.easeInOut
+                          );
+                        }
+                      },
+                      style: ElevatedButton.styleFrom(
+                        backgroundColor: _pages[_currentPage].color,
+                        foregroundColor: Colors.white,
+                        elevation: 8,
+                        shadowColor: _pages[_currentPage].color.withValues(alpha: 0.4),
+                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+                      ),
+                      child: AnimatedSwitcher(
+                        duration: const Duration(milliseconds: 300),
+                        child: Row(
+                          key: ValueKey(_currentPage),
+                          mainAxisAlignment: MainAxisAlignment.center,
+                          children: [
+                            Text(
+                              _currentPage == _pages.length - 1 ? 'GET STARTED' : 'CONTINUE',
+                              style: const TextStyle(fontWeight: FontWeight.w900, letterSpacing: 1.2, fontSize: 15),
+                            ),
+                            const SizedBox(width: 10),
+                            Icon(
+                              _currentPage == _pages.length - 1 ? Icons.check_circle_outline : Icons.arrow_forward_ios_rounded,
+                              size: 16,
+                            ),
+                          ],
                         ),
                       ),
                     ),
                   ),
-                ],
-              ),
+                ),
+              ],
             ),
-          ],
-        ),
+          ),
+        ],
       ),
     );
   }
@@ -210,13 +243,16 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
         mainAxisAlignment: MainAxisAlignment.center,
         children: [
           const SizedBox(height: 40),
-          // Animated Icon / Graphic Badge
+
+          // Video Animation Badge inside Circle Avatar
           AnimatedScale(
             duration: const Duration(milliseconds: 600),
             scale: isActive ? 1.0 : 0.6,
             curve: Curves.elasticOut,
             child: Container(
-              padding: EdgeInsets.all(isSmall ? 28 : 36),
+              width: isSmall ? 180 : 220,
+              height: isSmall ? 180 : 220,
+              padding: const EdgeInsets.all(12),
               decoration: BoxDecoration(
                 color: data.color.withValues(alpha: 0.12),
                 shape: BoxShape.circle,
@@ -230,7 +266,13 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
                     ),
                 ],
               ),
-              child: Icon(data.icon, size: isSmall ? 70 : 90, color: data.color),
+              child: ClipOval(
+                child: OnboardingVideoWidget(
+                  videoPath: data.videoPath,
+                  fallbackIcon: data.icon,
+                  fallbackColor: data.color,
+                ),
+              ),
             ),
           ),
           SizedBox(height: isSmall ? 32 : 48),
@@ -305,12 +347,85 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
   }
 }
 
+class OnboardingVideoWidget extends StatefulWidget {
+  final String videoPath;
+  final IconData fallbackIcon;
+  final Color fallbackColor;
+
+  const OnboardingVideoWidget({
+    super.key,
+    required this.videoPath,
+    required this.fallbackIcon,
+    required this.fallbackColor,
+  });
+
+  @override
+  State<OnboardingVideoWidget> createState() => _OnboardingVideoWidgetState();
+}
+
+class _OnboardingVideoWidgetState extends State<OnboardingVideoWidget> {
+  late VideoPlayerController _controller;
+  bool _isInitialized = false;
+
+  @override
+  void initState() {
+    super.initState();
+    _initVideo();
+  }
+
+  Future<void> _initVideo() async {
+    try {
+      _controller = VideoPlayerController.asset(widget.videoPath);
+      await _controller.initialize();
+      _controller.setLooping(true);
+      _controller.setVolume(0.0);
+      _controller.play();
+      if (mounted) {
+        setState(() => _isInitialized = true);
+      }
+    } catch (e) {
+      debugPrint('Onboarding video player error: $e');
+    }
+  }
+
+  @override
+  void dispose() {
+    _controller.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    if (!_isInitialized) {
+      return Center(
+        child: SizedBox(
+          width: 24,
+          height: 24,
+          child: CircularProgressIndicator(strokeWidth: 2, color: widget.fallbackColor),
+        ),
+      );
+    }
+    return SizedBox.expand(
+      child: FittedBox(
+        fit: BoxFit.cover,
+        child: SizedBox(
+          width: _controller.value.size.width,
+          height: _controller.value.size.height,
+          child: VideoPlayer(_controller),
+        ),
+      ),
+    );
+  }
+}
+
 class OnboardingData {
   final String title;
   final String subtitle;
   final String description;
   final IconData icon;
   final Color color;
+  final String imagePath;
+  final String videoPath;
 
   OnboardingData({
     required this.title, 
@@ -318,5 +433,7 @@ class OnboardingData {
     required this.description, 
     required this.icon,
     required this.color,
+    required this.imagePath,
+    required this.videoPath,
   });
 }
