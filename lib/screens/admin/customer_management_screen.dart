@@ -767,6 +767,52 @@ class _CustomerManagementScreenState extends ConsumerState<CustomerManagementScr
                       ),
                     ],
                   ),
+                  if (c.isPendingApproval) ...[
+                    const SizedBox(height: 6),
+                    Container(
+                      padding: const EdgeInsets.all(6),
+                      decoration: BoxDecoration(
+                        color: Colors.orange.withValues(alpha: 0.1),
+                        borderRadius: BorderRadius.circular(6),
+                        border: Border.all(color: Colors.orange.shade300),
+                      ),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          if (c.businessName != null && c.businessName!.isNotEmpty)
+                            Text('Shop: ${c.businessName}', style: const TextStyle(fontSize: 10, fontWeight: FontWeight.bold, color: Colors.orange)),
+                          const SizedBox(height: 4),
+                          Row(
+                            children: [
+                              Expanded(
+                                child: ElevatedButton.icon(
+                                  onPressed: () => _showApproveCustomerDialog(context, ref, c),
+                                  icon: const Icon(Icons.check_circle_rounded, size: 12),
+                                  label: const Text('APPROVE', style: TextStyle(fontSize: 9, fontWeight: FontWeight.bold)),
+                                  style: ElevatedButton.styleFrom(
+                                    backgroundColor: Colors.green.shade700,
+                                    foregroundColor: Colors.white,
+                                    padding: EdgeInsets.zero,
+                                    minimumSize: const Size(0, 26),
+                                  ),
+                                ),
+                              ),
+                              const SizedBox(width: 4),
+                              OutlinedButton(
+                                onPressed: () => ref.read(customerProvider.notifier).rejectCustomer(c.id),
+                                style: OutlinedButton.styleFrom(
+                                  foregroundColor: Colors.red,
+                                  padding: EdgeInsets.zero,
+                                  minimumSize: const Size(0, 26),
+                                ),
+                                child: const Text('REJECT', style: TextStyle(fontSize: 9, fontWeight: FontWeight.bold)),
+                              ),
+                            ],
+                          ),
+                        ],
+                      ),
+                    ),
+                  ],
                 ],
               ),
             ),
@@ -774,6 +820,108 @@ class _CustomerManagementScreenState extends ConsumerState<CustomerManagementScr
         },
       );
     });
+  }
+
+  void _showApproveCustomerDialog(BuildContext context, WidgetRef ref, Customer customer) {
+    final creditLimitController = TextEditingController(text: '5000');
+    String selectedPriceTier = 'wholesale';
+
+    showDialog(
+      context: context,
+      builder: (ctx) => StatefulBuilder(
+        builder: (ctx, setDlgState) => AlertDialog(
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(AppRadius.m)),
+          title: Row(
+            children: [
+              const CircleAvatar(
+                backgroundColor: Colors.green,
+                child: Icon(Icons.check_rounded, color: Colors.white),
+              ),
+              const SizedBox(width: 12),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    const Text('Approve Customer Account', style: TextStyle(fontSize: 15, fontWeight: FontWeight.bold)),
+                    Text(customer.name, style: const TextStyle(fontSize: 11, color: Colors.grey)),
+                  ],
+                ),
+              ),
+            ],
+          ),
+          content: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text('Business: ${customer.businessName ?? "N/A"}', style: const TextStyle(fontSize: 12, fontWeight: FontWeight.bold)),
+              Text('Phone: ${customer.phone}', style: const TextStyle(fontSize: 12)),
+              Text('Location: ${customer.location ?? "N/A"}', style: const TextStyle(fontSize: 12)),
+              const SizedBox(height: 14),
+              TextFormField(
+                controller: creditLimitController,
+                keyboardType: const TextInputType.numberWithOptions(decimal: true),
+                decoration: const InputDecoration(
+                  labelText: 'Allowable Credit Limit (GHS)',
+                  hintText: 'e.g. 5000',
+                  prefixIcon: Icon(Icons.credit_card_rounded, size: 18),
+                  border: OutlineInputBorder(),
+                  contentPadding: EdgeInsets.symmetric(horizontal: 10, vertical: 12),
+                ),
+              ),
+              const SizedBox(height: 12),
+              DropdownButtonFormField<String>(
+                value: selectedPriceTier,
+                decoration: const InputDecoration(
+                  labelText: 'Assigned Price Tier Category',
+                  prefixIcon: Icon(Icons.sell_outlined, size: 18),
+                  border: OutlineInputBorder(),
+                  contentPadding: EdgeInsets.symmetric(horizontal: 10, vertical: 12),
+                ),
+                items: const [
+                  DropdownMenuItem(value: 'retail', child: Text('Retail Pricing')),
+                  DropdownMenuItem(value: 'wholesale', child: Text('Wholesale Pricing')),
+                  DropdownMenuItem(value: 'vip', child: Text('VIP Wholesale Pricing')),
+                ],
+                onChanged: (val) {
+                  if (val != null) setDlgState(() => selectedPriceTier = val);
+                },
+              ),
+            ],
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(ctx),
+              child: const Text('Cancel'),
+            ),
+            ElevatedButton.icon(
+              onPressed: () async {
+                final double credit = double.tryParse(creditLimitController.text.trim()) ?? 0.0;
+                await ref.read(customerProvider.notifier).approveCustomer(
+                  customer.id,
+                  creditLimit: credit,
+                  priceTier: selectedPriceTier,
+                );
+                if (context.mounted) {
+                  Navigator.pop(ctx);
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    SnackBar(
+                      content: Text('${customer.name} approved & activated! Activation SMS sent.'),
+                      backgroundColor: Colors.green,
+                    ),
+                  );
+                }
+              },
+              icon: const Icon(Icons.check_circle_rounded, size: 18),
+              label: const Text('APPROVE & ACTIVATE'),
+              style: ElevatedButton.styleFrom(
+                backgroundColor: Colors.green.shade700,
+                foregroundColor: Colors.white,
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
   }
 
   Widget _buildMetricRow(IconData icon, String text, ThemeData theme, {Color? color}) {

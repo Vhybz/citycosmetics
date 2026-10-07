@@ -16,6 +16,7 @@ import 'screens/admin/debt_management_screen.dart';
 import 'screens/admin/inventory_control_screen.dart';
 import 'screens/admin/expense_management_screen.dart';
 import 'screens/admin/customer_management_screen.dart';
+import 'screens/admin/customer_orders_screen.dart';
 import 'screens/admin/staff_management_screen.dart';
 import 'screens/admin/system_settings_screen.dart';
 import 'screens/admin/recents_screen.dart';
@@ -324,6 +325,7 @@ class CityCosmeticsApp extends ConsumerWidget {
         '/admin/sales': (context) => const SalesReportsScreen(),
         '/admin/expenses': (context) => const ExpenseManagementScreen(),
         '/admin/customers': (context) => const CustomerManagementScreen(),
+        '/admin/orders': (context) => const CustomerOrdersScreen(),
         '/admin/documents': (context) => const DocumentsScreen(),
         '/admin/debts': (context) => const DebtManagementScreen(),
         '/admin/stock': (context) => const InventoryControlScreen(),

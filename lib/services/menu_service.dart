@@ -62,6 +62,7 @@ class MenuService {
       SidebarItem(icon: Icons.dashboard_rounded, label: 'Admin Dashboard', route: '/admin', category: secOverview),
       SidebarItem(icon: Icons.bar_chart_rounded, label: 'Sales & Analytics', route: '/admin/sales', category: secOverview),
       SidebarItem(icon: Icons.people_outline_rounded, label: 'Customer Directory', route: '/admin/customers', category: secStore),
+      SidebarItem(icon: Icons.shopping_bag_rounded, label: 'Customer Orders', route: '/admin/orders', category: secStore),
       SidebarItem(icon: Icons.account_balance_wallet_rounded, label: 'Debt Tracker', route: '/admin/debts', category: secStore),
       SidebarItem(icon: Icons.inventory_2_rounded, label: 'Master Stock Control', route: '/admin/stock', category: secInventory),
       SidebarItem(icon: Icons.warehouse_rounded, label: 'Warehouse Operations', route: '/warehouse', category: secInventory, badgeCount: pendingTransfersCount),

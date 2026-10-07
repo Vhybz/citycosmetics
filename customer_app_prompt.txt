@@ -1,0 +1,84 @@
+================================================================================
+MASTER AI ENGINEERING PROMPT: TRANSFORM CLONED POS APP INTO "CITY COSMETICS DIRECT"
+================================================================================
+
+Role & Goal:
+You are an expert Flutter & Supabase mobile app architect. This repository was cloned from CityPOS (the internal staff POS/Admin app). Your goal is to transform this codebase into a lightweight, secure, and beautiful B2B Customer Ordering Mobile Application ("City Cosmetics Direct") for trusted wholesale and retail clients with integrated Paystack payment support.
+
+--------------------------------------------------------------------------------
+STEP 0: ENVIRONMENT CONFIGURATION (.env Setup)
+--------------------------------------------------------------------------------
+1. Reuse the same SUPABASE_URL and SUPABASE_ANON_KEY from the original app so both apps communicate with the same Supabase database.
+2. REMOVE sensitive admin keys (such as SUPABASE_SERVICE_ROLE_KEY).
+3. Add PAYSTACK_PUBLIC_KEY=pk_live_xxxx... for client-side Paystack payment initialization.
+4. Keep ARKESEL_API_KEY and ARKESEL_SENDER_ID for sending automated customer SMS notifications.
+
+--------------------------------------------------------------------------------
+STEP 1: CODEBASE CLEANUP & SECURITY STRIPPING
+--------------------------------------------------------------------------------
+Delete or disable all internal staff and administrative screens to eliminate security risks and unnecessary bloat:
+1. Delete internal admin screens in `lib/screens/admin/` (except data models and read-only services needed for catalog).
+2. Delete POS Cashier checkout & Till management in `lib/screens/cashier/`.
+3. Delete Warehouse intake, processing, and internal dispatch screens in `lib/screens/warehouse/`.
+4. Delete internal staff salaries, expenses, GRA tax compliance, and system audit trail code.
+5. Retain shared core models (`product.dart`, `customer_model.dart`, `customer_order_model.dart`), Supabase configuration (`supabase_config.dart`), theme, and image caching utilities.
+
+--------------------------------------------------------------------------------
+STEP 2: AUTHENTICATION & ONBOARDING FLOW
+--------------------------------------------------------------------------------
+Implement the customer authentication flow in `lib/screens/auth/`:
+
+A. Customer Sign-In Screen (`customer_login_screen.dart`):
+   - Input: Phone Number + Secret 4-Digit Passcode.
+   - Authenticates against the `customers` table in Supabase.
+   - If `status == 'pending_approval'`, redirect to `PendingApprovalScreen`.
+   - If `status == 'suspended'`, display message: "Account suspended. Please contact City Cosmetics management."
+   - If `status == 'active'`, proceed to `CustomerHomeScreen`.
+
+B. Customer Sign-Up Screen (`customer_signup_screen.dart`):
+   - Form Fields:
+     1. Full Name (Contact Person)
+     2. Phone Number (Unique Login ID)
+     3. Business / Shop Name (e.g. "Grace Cosmetics Boutique")
+     4. Business Location / Delivery Address
+     5. Secret 4-Digit Passcode (with confirm passcode)
+   - On Submit: Creates record in `customers` table with `status = 'pending_approval'`.
+   - Navigation: Redirects to `PendingApprovalScreen`.
+
+C. Pending Approval Screen (`pending_approval_screen.dart`):
+   - Friendly UI informing the customer:
+     "Thank you for registering with City Cosmetics! Your business account is currently under review by our team. You will receive an SMS notification once approved."
+   - Includes a "Refresh Status" button and "Call Support" quick action.
+
+--------------------------------------------------------------------------------
+STEP 3: CORE CUSTOMER APP FEATURES & NAVIGATION
+--------------------------------------------------------------------------------
+Implement a clean bottom navigation bar with 3 main tabs:
+
+TAB 1: Live Catalog & Product Search (`catalog_screen.dart`)
+   - Product Grid: Displays active products with high-quality photos, names, categories, and brands.
+   - Stock Availability: Clear badges ("In Stock", "Low Stock", "Boxes Available").
+   - Tiered Pricing: Displays unit prices based on customer's assigned price tier (`retail`, `wholesale`, `vip`).
+   - Packaging Selector: Option to choose quantity in Pieces (Pcs) or Boxes / Cartons.
+   - Search & Category Filters: Filter by Skincare, Haircare, Fragrance, Makeup, etc.
+
+TAB 2: Shopping Cart, Checkout & Paystack Integration (`cart_checkout_screen.dart`)
+   - Review Cart Items: Update quantities or packaging units (Pcs/Boxes).
+   - Delivery Preferences: Option for "Store Pickup (HQ)" or "Delivery to Business Address".
+   - Payment Method Selection:
+     1. Paystack (Mobile Money / Card): Integrates Paystack inline SDK / WebView for instant MoMo (MTN, Telecel) or Visa/Mastercard payment in GHS. Saves `paystack_reference` on success and marks `payment_status = 'paid'`.
+     2. Add to Credit Balance: Available if customer's order total is within their assigned `credit_limit`. Sets `payment_status = 'credit'`.
+     3. Pay on Delivery (COD): Cash or MoMo on arrival. Sets `payment_status = 'unpaid'`.
+   - Submit Order: Inserts a new order into `customer_orders` table with status `'pending'` and displays an order confirmation receipt with Order #.
+
+TAB 3: My Orders & Credit Statement (`my_orders_screen.dart`)
+   - Live Order Progress: List of active and past orders with live status badges (`Pending` → `Approved` → `Dispatched` → `Delivered`) and payment badges (`Paid via Paystack`, `Credit`, `COD Unpaid`).
+   - Order Details: Expand any order to view line items, quantities, and delivery notes.
+   - Credit / Debt Balance Summary: Card showing current total debt balance, credit limit, and payment instructions.
+
+--------------------------------------------------------------------------------
+STEP 4: BRANDING & STYLING
+--------------------------------------------------------------------------------
+- App Name: City Cosmetics Direct
+- Theme Colors: Primary Maroon (`#6B1111`) / Accent Gold & Green.
+- Responsive layout supporting both Android smartphones and iOS devices.
